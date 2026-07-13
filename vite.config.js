@@ -7,9 +7,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png'],
       manifest: {
-        name: 'Skatehive Runner',
-        short_name: 'Skatehive',
-        description: 'Endless skateboarding runner — grind, trick, survive.',
+        name: 'Skatehive GRIND RUSH',
+        short_name: 'GRIND RUSH',
+        description: 'Endless skateboarding grind rush — grind, trick, survive.',
         theme_color: '#87ceeb',
         background_color: '#87ceeb',
         display: 'standalone',
