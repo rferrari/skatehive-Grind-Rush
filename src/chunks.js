@@ -105,7 +105,7 @@ const PATTERNS = [
     ],
     coins: [
       { lane: 1, z: 9, count: 4, arc: true },
-      { lane: 1, z: 16, count: 5, y: 2.6 },
+      { lane: 1, z: 12, count: 7, y: 2.6 },
     ],
   },
   {
@@ -115,7 +115,14 @@ const PATTERNS = [
       { type: 'container', lane: 0, z: 16 },
       { type: 'cone', lane: 2, z: 10 },
     ],
-    coins: [{ lane: 0, z: 16, count: 5, y: 2.6 }],
+    coins: [{ lane: 0, z: 12, count: 7, y: 2.6 }],
+  },
+
+  // ---- Tier 2: marathon rail — long grind, big balance payout ----
+  {
+    tier: 2,
+    items: [{ type: 'raillong', lane: 1, z: 12 }],
+    coins: [{ lane: 1, z: 4, count: 10, y: 1.6 }],
   },
 
   // ---- Tier 3: dense combos ----
@@ -203,7 +210,18 @@ const PATTERNS = [
       { type: 'container', lane: 2, z: 16 },
       { type: 'hole', lane: 1, z: 12 },
     ],
-    coins: [{ lane: 2, z: 16, count: 6, y: 2.6 }],
+    coins: [{ lane: 2, z: 12, count: 7, y: 2.6 }],
+  },
+
+  // ---- Tier 3: marathon rail alongside hazards ----
+  {
+    tier: 3,
+    items: [
+      { type: 'raillong', lane: 2, z: 12 },
+      { type: 'cone', lane: 1, z: 6 },
+      { type: 'barrier', lane: 0, z: 14 },
+    ],
+    coins: [{ lane: 2, z: 4, count: 10, y: 1.6 }],
   },
 
   // ---- Tier 4: dawn rush — everything at once ----

@@ -125,12 +125,17 @@ const CHARACTERS = [
   { name: 'GNARLY', colors: { skin: 0x8d5524, shirt: 0xe67e22, sleeve: 0xd35400, pants: 0x17202a, cap: 0xecf0f1, hair: 0x111111, shoe: 0x111111 } },
 ];
 
-// Selectable boards — deck color (geometry is shared).
+// Selectable rides. Skateboards roll on wheels; hoverboards float with an
+// under-glow, glide on held jump, magnet-grind rails, and unlock the
+// futuristic trick set (see CONFIG.tricks / hoverTrickFor).
 const BOARDS = [
-  { name: 'WOOD', deck: 0x6c3f18 },
-  { name: 'FIRE', deck: 0xc0392b },
-  { name: 'AQUA', deck: 0x16a085 },
-  { name: 'GOLD', deck: 0xf1c40f },
+  { name: 'WOOD', ride: 'skate', deck: 0x6c3f18 },
+  { name: 'FIRE', ride: 'skate', deck: 0xc0392b },
+  { name: 'AQUA', ride: 'skate', deck: 0x16a085 },
+  { name: 'GOLD', ride: 'skate', deck: 0xf1c40f },
+  { name: 'NEON', ride: 'hover', deck: 0x1c2733, glow: 0x2ee6ff },
+  { name: 'PLASMA', ride: 'hover', deck: 0x2a1633, glow: 0xff3df2 },
+  { name: 'VOLT', ride: 'hover', deck: 0x14290f, glow: 0x8aff3d },
 ];
 
 export const CONFIG = Object.freeze({
@@ -164,7 +169,7 @@ export const CONFIG = Object.freeze({
   // Verticality: kicker ramps launch you onto shipping-container tops for a
   // second level of height you can roll along.
   containerTop: 2.0, // ride height on top of a container
-  containerLength: 6, // z extent (long enough to ride)
+  containerLength: 12, // z extent — long enough to land on at any speed and ride
   kickerLaunch: 11, // upward velocity a kicker pops you with (clears containerTop)
   landMargin: 0.35, // feet-below-top slack: within this you land, below it you hit the side
   platformScoreRate: 30, // bonus points/second while riding a raised platform
@@ -182,13 +187,27 @@ export const CONFIG = Object.freeze({
   balanceGrace: 0.5, // seconds at the start of a grind before drift kicks in
 
   // Air tricks: trigger keys are handled in input.js, points and spin here.
+  // The last three are hoverboard-only (same inputs, remapped by hoverTrickFor).
   tricks: {
     kickflip: { score: 40, label: 'KICKFLIP' },
     heelflip: { score: 40, label: 'HEELFLIP' },
     shuvit: { score: 60, label: '360 SHUVIT' },
+    hoverspin: { score: 90, label: '720 HOVERSPIN' },
+    gravflip: { score: 110, label: 'GRAVITY FLIP' },
+    neondash: { score: 80, label: 'NEON DASH' },
   },
+  // On a hoverboard the classic trick inputs trigger the futuristic set.
+  hoverTrickFor: { kickflip: 'hoverspin', heelflip: 'gravflip', shuvit: 'neondash' },
   trickDuration: 0.42, // seconds the board spin takes; must finish before landing
   trickIntoGrindBonus: 80, // landing a trick straight onto a rail
+
+  // Hoverboard feel
+  hoverHeight: 0.32, // visual float above the surface while grounded
+  hoverBobAmp: 0.06,
+  hoverBobFreq: 3.2,
+  hoverGlideGravity: 0.42, // gravity multiplier while falling with jump held
+  hoverGrindSnapWindow: 0.85, // magnet-lock: wider than the skate snap window
+  hoverBalanceDrift: 0.5, // magnet-grind balance drifts at half speed
 
   // Spawning
   spawnHorizon: 130, // chunks are generated out to -spawnHorizon

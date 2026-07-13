@@ -25,17 +25,36 @@
       <div id="level-toast" class="hidden"></div>
     </div>
 
-    <div id="menu" class="overlay">
+    <!-- 1. Loading -->
+    <div id="loading" class="overlay">
+      <h1>SKATEHIVE<br />GRIND RUSH</h1>
+      <p class="loading-label">LOADING…</p>
+      <div id="loading-track"><div id="loading-bar"></div></div>
+    </div>
+
+    <!-- 2. Character + board selection (skater previewed live on the canvas) -->
+    <div id="select" class="overlay screen-split hidden">
+      <h2 class="screen-title">CHOOSE YOUR RIDE</h2>
+      <div class="select-bottom">
+        <div id="selector">
+          <div class="sel-row"><span class="sel-label">SKATER</span><div id="char-options" class="swatches"></div></div>
+          <div class="sel-row"><span class="sel-label">RIDE</span><div id="board-options" class="swatches"></div></div>
+        </div>
+        <button id="select-go" class="btn-primary">SKATE →</button>
+      </div>
+    </div>
+
+    <!-- 3. Start screen: how to play + tap to skate -->
+    <div id="menu" class="overlay hidden">
       <h1>SKATEHIVE<br />GRIND RUSH</h1>
       <p class="hiscore">HIGH SCORE: <span id="menu-hiscore">0</span></p>
       <p class="prompt">Press <b>SPACE</b> or tap to skate</p>
       <p class="controls">← → move &nbsp;·&nbsp; ↑ ollie &nbsp;·&nbsp; ↓ crouch &nbsp;·&nbsp; land on rails to grind</p>
       <p class="controls">in the air: ↑ again = kickflip &nbsp;·&nbsp; ← or → = heelflip &nbsp;·&nbsp; ←→ fast = 360 shuvit (works with swipes too)</p>
+      <p class="controls">kick off a ramp onto a shipping container to ride up high</p>
+      <p class="controls">hoverboards: futuristic tricks, magnet grinds, and hold ↑ (or touch) to glide</p>
       <p class="controls">on a rail: ← → to keep your balance — the longer the grind, the bigger the points</p>
-      <div id="selector">
-        <div class="sel-row"><span class="sel-label">SKATER</span><div id="char-options" class="swatches"></div></div>
-        <div class="sel-row"><span class="sel-label">BOARD</span><div id="board-options" class="swatches"></div></div>
-      </div>
+      <button id="menu-change" class="btn-secondary">◂ CHANGE SKATER</button>
       <button id="install-btn" class="hidden">📲 INSTALL APP</button>
       <p id="ios-hint" class="controls hidden">Install: tap <b>Share</b> → <b>Add to Home Screen</b></p>
     </div>

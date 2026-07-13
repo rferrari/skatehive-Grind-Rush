@@ -24,6 +24,8 @@ export const OBSTACLE_TYPES = {
   crate: { band: BAND.FULL, top: 2.2, depth: 1.0, build: buildCrate },
   sign: { band: BAND.OVERHEAD, clearance: 1.35, depth: 0.4, build: buildSign },
   rail: { band: BAND.RAIL, top: CONFIG.railTop, depth: 14, build: () => buildRail(14) },
+  // Marathon rail: much longer grind window for big balance scores.
+  raillong: { band: BAND.RAIL, top: CONFIG.railTop, depth: 22, build: () => buildRail(22) },
   car: { band: BAND.FULL, top: 1.6, depth: 3.6, build: buildCar },
   bike: { band: BAND.LOW, top: 0.9, depth: 0.9, build: buildBike },
   hole: { band: BAND.GAP, top: 0, depth: 1.5, build: buildHole },

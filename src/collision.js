@@ -18,7 +18,9 @@ export function checkCollisions(player, obstacles) {
     switch (c.band) {
       case BAND.RAIL: {
         if (player.grinding) break; // already on a rail
-        const nearTop = Math.abs(player.y - c.top) < CONFIG.grindSnapWindow;
+        // Per-ride snap distance: hoverboards magnet-lock from farther away.
+        const snap = player.grindSnapWindow ?? CONFIG.grindSnapWindow;
+        const nearTop = Math.abs(player.y - c.top) < snap;
         if (player.airborne && player.vy <= 0 && nearTop) {
           return { kind: 'grind', mesh };
         }

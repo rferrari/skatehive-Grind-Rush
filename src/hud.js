@@ -13,6 +13,9 @@ export class Hud {
       balanceNeedle: document.getElementById('balance-needle'),
       trick: document.getElementById('trick-ticker'),
       toast: document.getElementById('level-toast'),
+      loading: document.getElementById('loading'),
+      loadingBar: document.getElementById('loading-bar'),
+      select: document.getElementById('select'),
       menu: document.getElementById('menu'),
       menuHiscore: document.getElementById('menu-hiscore'),
       gameover: document.getElementById('gameover'),
@@ -80,22 +83,35 @@ export class Hud {
     this.toastTimer = setTimeout(() => this.el.toast.classList.add('hidden'), 2200);
   }
 
+  // Show exactly one pre-game screen (loading | select | menu | gameover | null).
+  showScreen(name) {
+    for (const key of ['loading', 'select', 'menu', 'gameover']) {
+      this.el[key].classList.toggle('hidden', key !== name);
+    }
+  }
+
+  showLoading(progress) {
+    this.el.loadingBar.style.width = `${Math.round(progress * 100)}%`;
+  }
+
+  showSelect() {
+    this.showScreen('select');
+  }
+
   showMenu() {
     this.el.menuHiscore.textContent = this.loadHighScore();
-    this.el.menu.classList.remove('hidden');
-    this.el.gameover.classList.add('hidden');
+    this.showScreen('menu');
   }
 
   showGameOver(score, highScore, isRecord) {
     this.el.finalScore.textContent = Math.floor(score);
     this.el.goHiscore.textContent = highScore;
     this.el.newRecord.classList.toggle('hidden', !isRecord);
-    this.el.gameover.classList.remove('hidden');
+    this.showScreen('gameover');
   }
 
   hideOverlays() {
-    this.el.menu.classList.add('hidden');
-    this.el.gameover.classList.add('hidden');
+    this.showScreen(null);
     this.el.trick.classList.add('hidden');
     this.el.toast.classList.add('hidden');
   }

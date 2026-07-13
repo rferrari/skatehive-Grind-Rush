@@ -22,6 +22,7 @@ export class Player {
     this.mats = mats; // per-part materials, recolored by applyPalette()
     this.looseBoard = null; // board mesh once detached on a bail
     this.looseBoardSpeed = 0;
+    this.ride = 'skate'; // 'skate' | 'hover' — survives reset()
     scene.add(group);
     this.reset();
   }
@@ -30,8 +31,26 @@ export class Player {
   applyPalette(palette) {
     const p = { ...DEFAULT_SKATER_PALETTE, ...palette };
     for (const key of Object.keys(this.mats)) {
-      if (p[key] !== undefined) this.mats[key].color.setHex(p[key]);
+      if (p[key] === undefined) continue;
+      this.mats[key].color.setHex(p[key]);
+      if (key === 'glow') this.mats.glow.emissive.setHex(p[key]);
     }
+  }
+
+  // Swap between skateboard (wheels) and hoverboard (glow + thruster pods).
+  setRide(ride) {
+    this.ride = ride;
+    this.parts.skateGear.visible = ride === 'skate';
+    this.parts.hoverGear.visible = ride === 'hover';
+  }
+
+  get isHover() {
+    return this.ride === 'hover';
+  }
+
+  // Rail snap distance — the hoverboard magnet-locks from farther away.
+  get grindSnapWindow() {
+    return this.isHover ? CONFIG.hoverGrindSnapWindow : CONFIG.grindSnapWindow;
   }
 
   reset() {
@@ -175,9 +194,11 @@ export class Player {
   // -------------------------------------------------------------- update ---
   // floorY is the support height directly under the player this frame (0 on
   // the ground, a container top when riding one) — supplied by game.js from
-  // queryFloor(). Defaults to ground so headless/unit callers stay simple.
-  update(dt, floorY = 0) {
+  // queryFloor(). glideHeld: jump input held (hoverboards fall slower).
+  // Defaults keep headless/unit callers simple.
+  update(dt, floorY = 0, glideHeld = false) {
     this.time += dt;
+    this.gliding = this.isHover && this.airborne && glideHeld && this.vy < 0;
 
     if (this.bailing) {
       this.bailT = Math.min(this.bailT + dt / 0.45, 1);
@@ -216,7 +237,9 @@ export class Player {
       if (this.grindTime > CONFIG.balanceGrace) {
         const lean = this.balance === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(this.balance);
         const pressure = 0.45 + Math.min(this.grindTime * 0.2, 1.1);
-        this.balance += lean * CONFIG.balanceDriftMax * pressure * dt;
+        // The hoverboard magnet-locks onto rails: balance drifts at half rate.
+        const magnet = this.isHover ? CONFIG.hoverBalanceDrift : 1;
+        this.balance += lean * CONFIG.balanceDriftMax * pressure * magnet * dt;
       }
       if (Math.abs(this.balance) > 1) {
         this.events.push({ type: 'balanceBail' });
@@ -230,7 +253,9 @@ export class Player {
       }
     } else if (this.airborne) {
       this.y += this.vy * dt;
-      this.vy -= CONFIG.gravity * dt;
+      // Hover-glide: holding jump on a hoverboard softens gravity on the way
+      // down, stretching airtime off kickers and container drops.
+      this.vy -= CONFIG.gravity * (this.gliding ? CONFIG.hoverGlideGravity : 1) * dt;
       // Land on whatever surface is under us — ground or a container top.
       // queryFloor only reports a container top once we've risen to within a
       // step of it, so this also "catches" a launched player onto a ledge on
@@ -265,7 +290,14 @@ export class Player {
     const { board, body, legs, torso } = this.parts;
     const targetX = CONFIG.lanes[this.laneIndex];
 
-    this.group.position.set(this.x, this.y, 0);
+    // Hoverboards float and bob above the surface while riding; the NEON DASH
+    // trick lunges the whole rider forward and back.
+    const hoverLift =
+      this.isHover && !this.airborne && !this.grinding
+        ? CONFIG.hoverHeight + Math.sin(this.time * CONFIG.hoverBobFreq) * CONFIG.hoverBobAmp
+        : 0;
+    const trickZ = this.trick === 'neondash' ? -Math.sin(this.trickT * Math.PI) * 1.6 : 0;
+    this.group.position.set(this.x, this.y + hoverLift, trickZ);
 
     // Bank into lane changes, board a touch more than the body. While
     // grinding, the lean IS the balance needle.
@@ -291,6 +323,19 @@ export class Player {
       if (this.trick === 'kickflip') board.rotation.z = -spin;
       else if (this.trick === 'heelflip') board.rotation.z = spin;
       else if (this.trick === 'shuvit') board.rotation.y = spin;
+      else if (this.trick === 'hoverspin') board.rotation.y = spin * 2; // 720°
+      else if (this.trick === 'gravflip') {
+        // The board flips end-over-end while orbiting the rider.
+        board.rotation.x = spin;
+        board.position.y = (1 - Math.cos(spin)) * 0.45;
+        board.position.z = -Math.sin(spin) * 0.45;
+      } else if (this.trick === 'neondash') {
+        board.rotation.x = -Math.sin(spin / 2) * 0.5; // nose-down surge
+      }
+    } else {
+      // Recover board offsets left by a cancelled mid-air gravflip.
+      board.position.y = approach(board.position.y, 0, dt, 0.08);
+      board.position.z = approach(board.position.z, 0, dt, 0.08);
     }
 
     // Body height/crouch per state. Sliding is a powerslide: a low crouch

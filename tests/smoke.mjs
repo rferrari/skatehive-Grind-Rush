@@ -167,4 +167,48 @@ p.update(1 / 60, queryFloor(p, [container]));
 if (!p.airborne) throw new Error('player did not step off the end of the container');
 console.log('container ride/step-off OK');
 
+// 9. Hoverboard: ride switch toggles gear; glide slows the fall; magnet grind
+// widens the rail snap window and slows balance drift.
+p.reset();
+p.setRide('hover');
+if (!p.parts.hoverGear.visible || p.parts.skateGear.visible)
+  throw new Error('setRide(hover) did not swap board gear');
+if (p.grindSnapWindow <= CONFIG.grindSnapWindow)
+  throw new Error('hover grind snap window is not wider than skate');
+// Glide: identical fall with jump held loses less height on a hoverboard.
+const fallDrop = (ride, held) => {
+  p.reset();
+  p.setRide(ride);
+  p.y = 3; p.vy = 0; p.airborne = true;
+  for (let i = 0; i < 20; i++) p.update(1 / 60, 0, held);
+  return 3 - p.y;
+};
+const glideDrop = fallDrop('hover', true);
+const plainDrop = fallDrop('hover', false);
+const skateDrop = fallDrop('skate', true); // held jump must NOT glide a skateboard
+if (glideDrop >= plainDrop * 0.7) throw new Error(`glide too weak: ${glideDrop} vs ${plainDrop}`);
+if (Math.abs(skateDrop - plainDrop) > 1e-9) throw new Error('skateboard glided');
+// Hover tricks exist and map from the classic inputs.
+for (const [from, to] of Object.entries(CONFIG.hoverTrickFor)) {
+  if (!CONFIG.tricks[from] || !CONFIG.tricks[to])
+    throw new Error(`hover trick mapping ${from}→${to} references unknown trick`);
+}
+// Magnet grind survives noticeably longer than skate with no input.
+const framesUntilBail = (ride) => {
+  p.reset();
+  p.setRide(ride);
+  p.enterGrind(fakeRail);
+  for (let i = 0; i < 2000; i++) {
+    p.update(1 / 60);
+    if (p.popEvents().some((e) => e.type === 'balanceBail')) return i;
+  }
+  return 2000;
+};
+const skateFrames = framesUntilBail('skate');
+const hoverFrames = framesUntilBail('hover');
+if (hoverFrames <= skateFrames)
+  throw new Error(`magnet grind not longer: hover ${hoverFrames} vs skate ${skateFrames}`);
+p.setRide('skate');
+console.log(`hoverboard OK (glide ${glideDrop.toFixed(2)} vs ${plainDrop.toFixed(2)} drop; grind ${hoverFrames} vs ${skateFrames} frames)`);
+
 console.log('ALL SMOKE TESTS PASSED');

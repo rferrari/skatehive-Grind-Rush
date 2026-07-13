@@ -10,6 +10,7 @@ import { Hud } from './hud.js';
 import { checkCollisions, queryFloor } from './collision.js';
 
 const RESTART_LOCKOUT = 0.7; // seconds before game-over screen accepts input
+const LOADING_DURATION = 1.6; // seconds the loading bar takes to fill
 
 // Cosmetic-selection persistence (clamped so a shrunk preset list can't break).
 function loadIndex(key, count) {
@@ -30,8 +31,10 @@ export class Game {
     this.input = new Input();
     this.hud = new Hud();
 
-    this.state = 'menu';
+    this.state = 'loading';
     this.stateTime = 0;
+    this.loadingT = 0;
+    this.previewSpin = 0;
     this.score = 0;
     this.coinCount = 0;
     this.distance = 0;
@@ -46,17 +49,43 @@ export class Game {
     this.boardIndex = loadIndex('skatehive-board', CONFIG.boards.length);
     this.applySelection();
 
-    this.hud.showMenu();
+    this.hud.showLoading(0);
     this.updateCamera(0);
   }
 
-  // Build the active palette (character colors + board deck) and paint it on.
+  // Loading → select. Frames the skater for the character/board preview.
+  goToSelect() {
+    this.player.reset();
+    this.previewSpin = 0;
+    this.state = 'select';
+    this.stateTime = 0;
+    this.hud.showSelect();
+  }
+
+  // Select → start screen. Faces the skater forward again for the run camera.
+  goToMenu() {
+    this.player.group.rotation.y = 0;
+    this.state = 'menu';
+    this.stateTime = 0;
+    this.hud.showMenu();
+  }
+
+  // Build the active palette (character colors + board deck/glow), paint it
+  // on, and swap the board gear for the selected ride type.
   applySelection() {
+    const board = CONFIG.boards[this.boardIndex];
     const palette = {
       ...CONFIG.characters[this.charIndex].colors,
-      deck: CONFIG.boards[this.boardIndex].deck,
+      deck: board.deck,
+      ...(board.glow !== undefined && { glow: board.glow }),
     };
     this.player.applyPalette(palette);
+    this.player.setRide(board.ride);
+  }
+
+  // On a hoverboard the classic trick inputs fire the futuristic set.
+  trickFor(name) {
+    return this.player.isHover ? CONFIG.hoverTrickFor[name] ?? name : name;
   }
 
   selectCharacter(i) {
@@ -122,6 +151,22 @@ export class Game {
     const actions = this.input.poll();
 
     switch (this.state) {
+      case 'loading':
+        this.world.update(dt, 4);
+        this.player.update(dt);
+        this.loadingT += dt;
+        this.hud.showLoading(Math.min(1, this.loadingT / LOADING_DURATION));
+        if (this.loadingT >= LOADING_DURATION) this.goToSelect();
+        break;
+
+      case 'select':
+        this.world.update(dt, 4);
+        this.player.update(dt);
+        this.previewSpin += dt * 0.7;
+        this.player.group.rotation.y = this.previewSpin; // slow turntable preview
+        if (actions.includes('start')) this.goToMenu();
+        break;
+
       case 'menu':
         this.world.update(dt, 5); // slow scroll behind the title
         this.player.update(dt);
@@ -151,11 +196,11 @@ export class Game {
     if (!p.airborne || p.grinding || p.bailing) return;
     const now = this.stateTime;
     if (this.lastAirDir === -dir && now - this.lastAirDirTime < 0.3) {
-      p.tryTrick('shuvit', true);
+      p.tryTrick(this.trickFor('shuvit'), true);
       this.lastAirDir = 0;
       return;
     }
-    p.tryTrick('heelflip');
+    p.tryTrick(this.trickFor('heelflip'));
     this.lastAirDir = dir;
     this.lastAirDirTime = now;
   }
@@ -180,19 +225,20 @@ export class Game {
         this.player.moveLane(dir);
         this.airMotion(dir);
       } else if (action === 'jump') {
-        // Second jump input while already in the air = kickflip.
-        if (this.player.airborne && !this.player.grinding) this.player.tryTrick('kickflip');
-        else this.player.jump();
+        // Second jump input while already in the air = kickflip (or hoverspin).
+        if (this.player.airborne && !this.player.grinding) {
+          this.player.tryTrick(this.trickFor('kickflip'));
+        } else this.player.jump();
       } else if (action === 'slide') {
         this.player.slide();
       } else if (action in CONFIG.tricks) {
-        this.player.tryTrick(action); // Z/X/C shortcuts still work
+        this.player.tryTrick(this.trickFor(action)); // Z/X/C shortcuts still work
       }
     }
 
     // Support height under the player (0 = ground, container top when riding).
     const floorY = queryFloor(this.player, this.chunks.active);
-    this.player.update(dt, floorY);
+    this.player.update(dt, floorY, this.input.jumpHeld());
     this.world.update(dt, this.speed);
     this.chunks.update(dt, this.speed, this.distance);
     const picked = this.coins.update(dt, this.speed, this.player);
@@ -239,6 +285,18 @@ export class Game {
 
   updateCamera(dt) {
     const cam = this.camera;
+
+    // Loading & selection use a close, forward-facing preview of the skater.
+    if (this.state === 'loading' || this.state === 'select') {
+      cam.position.set(0, 1.5, 4.3);
+      cam.lookAt(0, 0.95, 0);
+      if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
+        cam.fov = CONFIG.fovBase;
+        cam.updateProjectionMatrix();
+      }
+      return;
+    }
+
     const targetX = this.player.x * 0.5;
     this.camX = dt ? this.camX + (targetX - this.camX) * Math.min(1, dt * 8) : targetX;
     // Lift the camera and its look target with the player so a rider up on a

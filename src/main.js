@@ -29,6 +29,11 @@ function buildSwatches(containerId, items, colorOf, getActive, onPick) {
     btn.className = 'swatch';
     btn.style.background = hex(colorOf(item));
     btn.title = item.name;
+    // Hoverboards glow in the picker too (via --glow so .active still styles).
+    if (item.ride === 'hover') {
+      btn.classList.add('swatch-hover');
+      btn.style.setProperty('--glow', hex(item.glow));
+    }
     btn.addEventListener('click', () => {
       onPick(i);
       refresh();
@@ -49,8 +54,25 @@ function buildSwatches(containerId, items, colorOf, getActive, onPick) {
 
 buildSwatches('char-options', CONFIG.characters, (c) => c.colors.shirt,
   () => game.charIndex, (i) => game.selectCharacter(i));
-buildSwatches('board-options', CONFIG.boards, (b) => b.deck,
+buildSwatches('board-options', CONFIG.boards, (b) => (b.ride === 'hover' ? b.glow : b.deck),
   () => game.boardIndex, (i) => game.selectBoard(i));
+
+// Keep taps on UI controls from also reaching the window touch handler (which
+// would queue a spurious "start"/jump).
+function stopTouch(el) {
+  for (const type of ['touchstart', 'touchend']) {
+    el.addEventListener(type, (e) => e.stopPropagation());
+  }
+}
+
+// Screen navigation: select → start, and start → back to selection.
+const selectGo = document.getElementById('select-go');
+selectGo.addEventListener('click', () => game.goToMenu());
+stopTouch(selectGo);
+
+const menuChange = document.getElementById('menu-change');
+menuChange.addEventListener('click', () => game.goToSelect());
+stopTouch(menuChange);
 
 // ---- PWA install button (mobile menu screen) ----
 // Chrome/Android fires beforeinstallprompt when the app is installable; we
@@ -76,6 +98,7 @@ installBtn.addEventListener('click', async () => {
   installPrompt = null;
   installBtn.classList.add('hidden');
 });
+stopTouch(installBtn);
 
 addEventListener('appinstalled', () => {
   installBtn.classList.add('hidden');

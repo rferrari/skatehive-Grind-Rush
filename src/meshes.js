@@ -107,6 +107,7 @@ function tube(material, length, x, y, z, rx = 0, rz = 0) {
 export const DEFAULT_SKATER_PALETTE = {
   skin: 0xe0ac69, shirt: 0x2e86de, sleeve: 0x1b6ec2, pants: 0x2d3436,
   cap: 0xd63031, hair: 0x3a2a1a, shoe: 0xf5f0e6, deck: 0x6c3f18,
+  glow: 0x2ee6ff, // hoverboard under-glow (emissive)
 };
 
 // Returns { group, parts, mats } — `parts` are the sub-groups player.js
@@ -115,9 +116,11 @@ export const DEFAULT_SKATER_PALETTE = {
 export function buildSkater(palette = {}) {
   const p = { ...DEFAULT_SKATER_PALETTE, ...palette };
   // Per-instance materials for the customizable parts (few skaters exist).
+  // `glow` is emissive so the hoverboard underside shines regardless of light.
   const M = {
     skin: mat(p.skin), shirt: mat(p.shirt), sleeve: mat(p.sleeve), pants: mat(p.pants),
     cap: mat(p.cap), hair: mat(p.hair), shoe: mat(p.shoe), deck: mat(p.deck),
+    glow: new THREE.MeshLambertMaterial({ color: p.glow, emissive: p.glow }),
   };
 
   const group = new THREE.Group();
@@ -131,6 +134,9 @@ export function buildSkater(palette = {}) {
   const tail = box(M.deck, 0.3, 0.05, 0.16, 0, 0.3, 0.56);
   tail.rotation.x = 0.45;
   board.add(deck, grip, nose, tail);
+
+  // Skate gear: wheels + trucks. Hidden when riding a hoverboard.
+  const skateGear = new THREE.Group();
   const wheels = [];
   for (const [x, z] of [
     [-0.14, -0.32],
@@ -141,13 +147,28 @@ export function buildSkater(palette = {}) {
     const w = new THREE.Mesh(GEO.wheel, MATS.wheel);
     w.rotation.z = Math.PI / 2;
     w.position.set(x, 0.09, z);
-    board.add(w);
+    skateGear.add(w);
     wheels.push(w);
   }
-  board.add(
+  skateGear.add(
     box(MATS.truck, 0.22, 0.07, 0.1, 0, 0.18, -0.32),
     box(MATS.truck, 0.22, 0.07, 0.1, 0, 0.18, 0.32)
   );
+  board.add(skateGear);
+
+  // Hover gear: glowing underside plate + twin thruster pods. Hidden on a
+  // skateboard; the glow material recolors per selected hoverboard.
+  const hoverGear = new THREE.Group();
+  hoverGear.add(
+    box(M.glow, 0.26, 0.04, 0.95, 0, 0.21, 0), // under-glow plate
+    box(MATS.truck, 0.2, 0.09, 0.24, 0, 0.17, -0.34), // pods
+    box(MATS.truck, 0.2, 0.09, 0.24, 0, 0.17, 0.34),
+    box(M.glow, 0.14, 0.05, 0.06, 0, 0.14, -0.46), // thruster exhausts
+    box(M.glow, 0.14, 0.05, 0.06, 0, 0.14, 0.46)
+  );
+  hoverGear.visible = false;
+  board.add(hoverGear);
+
   group.add(board);
 
   // Body, origin at board deck level; slight skate stance (feet apart on z).
@@ -209,7 +230,11 @@ export function buildSkater(palette = {}) {
   body.add(legs, torso);
   group.add(body);
 
-  return { group, parts: { board, wheels, body, legs, torso, arms, head }, mats: M };
+  return {
+    group,
+    parts: { board, wheels, skateGear, hoverGear, body, legs, torso, arms, head },
+    mats: M,
+  };
 }
 
 // ------------------------------------------------------------- obstacles ---

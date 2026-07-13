@@ -3,12 +3,19 @@
 // plus air tricks: 'kickflip' | 'heelflip' | 'shuvit'
 const SWIPE_THRESHOLD = 30; // px
 
+const JUMP_KEYS = new Set(['ArrowUp', 'KeyW', 'Space']);
+
 export class Input {
   constructor() {
     this.queue = [];
     this.touchStart = null;
+    this.heldJumpKeys = new Set(); // for hoverboard glide (hold to fall slower)
+    this.touchHeld = false;
+
+    addEventListener('keyup', (e) => this.heldJumpKeys.delete(e.code));
 
     addEventListener('keydown', (e) => {
+      if (JUMP_KEYS.has(e.code)) this.heldJumpKeys.add(e.code);
       if (e.repeat) return;
       switch (e.code) {
         case 'ArrowLeft':
@@ -54,6 +61,7 @@ export class Input {
         if (e.target.closest('#install-btn')) return; // button taps aren't game input
         const t = e.changedTouches[0];
         this.touchStart = { x: t.clientX, y: t.clientY };
+        this.touchHeld = true; // finger down = glide on a hoverboard
       },
       { passive: true }
     );
@@ -61,6 +69,7 @@ export class Input {
     addEventListener(
       'touchend',
       (e) => {
+        this.touchHeld = false;
         if (!this.touchStart) return;
         const t = e.changedTouches[0];
         const dx = t.clientX - this.touchStart.x;
@@ -83,5 +92,10 @@ export class Input {
     const actions = this.queue;
     this.queue = [];
     return actions;
+  }
+
+  // Is a jump input currently held? (hoverboard glide)
+  jumpHeld() {
+    return this.heldJumpKeys.size > 0 || this.touchHeld;
   }
 }
