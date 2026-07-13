@@ -1,4 +1,5 @@
-import { CONFIG } from '../src/config.js';
+import { CONFIG, computeStats, DEFAULT_LOADOUT } from '../src/config.js';
+import { LocalLedger } from '../src/ledger.js';
 import * as meshes from '../src/meshes.js';
 import { ChunkManager } from '../src/chunks.js';
 import { CoinManager } from '../src/coins.js';
@@ -155,6 +156,27 @@ if (queryFloor(p, [container]) !== 0)
   throw new Error('grounded player below the top should not be supported by it');
 console.log('container platform OK');
 
+// 8a. A plain ollie can land on the container — the jump apex must clear the
+// landing margin (regression: containerTop 2.0 was un-ollieable).
+{
+  const apex = CONFIG.jumpVelocity ** 2 / (2 * CONFIG.gravity);
+  if (apex < CONFIG.containerTop - CONFIG.landMargin)
+    throw new Error(`ollie apex ${apex.toFixed(2)} cannot reach container landing window`);
+  p.reset();
+  container.position.z = 0;
+  p.jump();
+  let landedTop = false;
+  for (let i = 0; i < 120 && !landedTop; i++) {
+    const floorY = queryFloor(p, [container]);
+    p.update(1 / 60, floorY);
+    const ev = checkCollisions(p, [container]);
+    if (ev?.kind === 'hit') throw new Error('ollie onto container side-hit');
+    if (!p.airborne && Math.abs(p.y - CONFIG.containerTop) < 1e-6) landedTop = true;
+  }
+  if (!landedTop) throw new Error('plain ollie never landed on the container top');
+  console.log('ollie-onto-container OK');
+}
+
 // 8b. Ride then roll off: standing on the top stays put; once the container
 // passes behind, the floor drops and the player steps off into a fall.
 p.reset();
@@ -210,5 +232,60 @@ if (hoverFrames <= skateFrames)
   throw new Error(`magnet grind not longer: hover ${hoverFrames} vs skate ${skateFrames}`);
 p.setRide('skate');
 console.log(`hoverboard OK (glide ${glideDrop.toFixed(2)} vs ${plainDrop.toFixed(2)} drop; grind ${hoverFrames} vs ${skateFrames} frames)`);
+
+// 10. Economy: LocalLedger balances/ownership/equip/pot + persistence, and
+// computeStats casual-vs-ranked. Uses a Map-backed storage shim.
+function memStorage() {
+  const m = new Map();
+  return {
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+  };
+}
+{
+  const store = memStorage();
+  const led = new LocalLedger(store);
+  if (led.getBalance() !== 0) throw new Error('fresh wallet not 0');
+  if (!led.owns('deck', 'deck-wood')) throw new Error('starter deck not owned');
+  if (led.owns('deck', 'deck-fire')) throw new Error('premium deck owned for free');
+
+  await led.earn(100);
+  let r = await led.buy('deck', 'deck-fire'); // costs 120
+  if (r.ok || r.reason !== 'poor') throw new Error('bought deck-fire while too poor');
+  await led.earn(50); // now 150
+  r = await led.buy('deck', 'deck-fire');
+  if (!r.ok || led.getBalance() !== 30) throw new Error(`buy math wrong: ${JSON.stringify(r)} bal ${led.getBalance()}`);
+  if (Math.round(led.getPot()) !== Math.round(120 * CONFIG.potCutPct))
+    throw new Error(`pot cut wrong: ${led.getPot()}`);
+  if (!led.owns('deck', 'deck-fire')) throw new Error('bought deck not owned');
+  if ((await led.buy('deck', 'deck-fire')).reason !== 'owned') throw new Error('re-bought owned deck');
+  await led.equip('deck', 'deck-fire');
+  if (led.getEquipped('deck') !== 'deck-fire') throw new Error('equip did not stick');
+  if ((await led.equip('wheels', 'wheels-turbo')).ok) throw new Error('equipped an unowned part');
+
+  // Persistence: a fresh ledger over the same storage restores state.
+  const led2 = new LocalLedger(store);
+  if (led2.getBalance() !== 30 || !led2.owns('deck', 'deck-fire') || led2.getEquipped('deck') !== 'deck-fire')
+    throw new Error('ledger did not persist');
+  console.log('ledger persistence OK');
+
+  // computeStats: ranked normalizes to 1; casual reflects equipped parts.
+  const ranked = computeStats({ ...DEFAULT_LOADOUT, deck: 'deck-fire' }, 'ranked');
+  if (Object.values(ranked).some((v) => v !== 1)) throw new Error('ranked stats not normalized');
+  const casual = computeStats({ ...DEFAULT_LOADOUT, deck: 'deck-fire', wheels: 'wheels-turbo' }, 'casual');
+  if (casual.scoreMul !== 1.1 || casual.speedMul !== 1.25)
+    throw new Error(`casual stats wrong: ${JSON.stringify(casual)}`);
+
+  // Leaderboard: ranked runs recorded (top-first), casual ignored.
+  const NOW = 1_700_000_000_000;
+  await led.submitScore({ score: 50, mode: 'ranked', ts: NOW });
+  await led.submitScore({ score: 90, mode: 'ranked', ts: NOW });
+  await led.submitScore({ score: 999, mode: 'casual', ts: NOW });
+  const board = led.getLeaderboard(NOW);
+  if (board[0].score !== 90 || board.some((e) => e.score === 999))
+    throw new Error(`leaderboard wrong: ${JSON.stringify(board)}`);
+  console.log('economy (ledger + stats + leaderboard) OK');
+}
 
 console.log('ALL SMOKE TESTS PASSED');

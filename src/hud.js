@@ -1,6 +1,18 @@
 // DOM overlay: score readouts, level indicator, trick/level toasts, the
-// grind balance bar, menu and game-over screens, high score persistence.
+// grind balance bar, menu / store / game-over screens, high score persistence.
+import { CONFIG, PART_SLOTS, partById } from './config.js';
+
 const HISCORE_KEY = 'skatehive-runner-highscore';
+
+const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
+const SLOT_LABELS = { deck: 'DECK', wheels: 'WHEELS', trucks: 'TRUCKS', spinners: 'SPINNERS' };
+// One representative stat per slot for the tile readout.
+const SLOT_STAT = {
+  deck: (s) => `score ×${s.scoreMul ?? 1}`,
+  wheels: (s) => `speed ×${s.speedMul ?? 1}`,
+  trucks: (s) => `grip ×${s.handlingMul ?? 1}`,
+  spinners: (s) => `trick ×${s.trickScoreMul ?? 1}`,
+};
 
 export class Hud {
   constructor() {
@@ -22,12 +34,21 @@ export class Hud {
       finalScore: document.getElementById('final-score'),
       goHiscore: document.getElementById('go-hiscore'),
       newRecord: document.getElementById('new-record'),
+      menuWallet: document.getElementById('menu-wallet'),
+      continueBtn: document.getElementById('continue-btn'),
+      goWallet: document.getElementById('go-wallet'),
+      goLeaderboard: document.getElementById('go-leaderboard'),
+      store: document.getElementById('store'),
+      storeSlots: document.getElementById('store-slots'),
+      storeBalance: document.getElementById('store-balance'),
+      storePot: document.getElementById('store-pot'),
     };
     this.lastScore = -1;
     this.lastCoins = -1;
     this.lastLevel = 0;
     this.trickTimer = null;
     this.toastTimer = null;
+    this.storeTiles = null; // built lazily by buildStore()
   }
 
   loadHighScore() {
@@ -83,9 +104,9 @@ export class Hud {
     this.toastTimer = setTimeout(() => this.el.toast.classList.add('hidden'), 2200);
   }
 
-  // Show exactly one pre-game screen (loading | select | menu | gameover | null).
+  // Show exactly one pre-game screen (loading | select | store | menu | gameover | null).
   showScreen(name) {
-    for (const key of ['loading', 'select', 'menu', 'gameover']) {
+    for (const key of ['loading', 'select', 'store', 'menu', 'gameover']) {
       this.el[key].classList.toggle('hidden', key !== name);
     }
   }
@@ -98,16 +119,92 @@ export class Hud {
     this.showScreen('select');
   }
 
-  showMenu() {
+  showMenu(wallet = null) {
     this.el.menuHiscore.textContent = this.loadHighScore();
+    if (wallet !== null) this.el.menuWallet.textContent = `BANK: 🛹 ${wallet}`;
     this.showScreen('menu');
   }
 
-  showGameOver(score, highScore, isRecord) {
+  // info: { wallet, cost, pot, leaderboard, mode }. CONTINUE shows only when
+  // affordable; the pot + top-3 board show on ranked runs.
+  showGameOver(score, highScore, isRecord, info = null) {
     this.el.finalScore.textContent = Math.floor(score);
     this.el.goHiscore.textContent = highScore;
     this.el.newRecord.classList.toggle('hidden', !isRecord);
+    if (info) {
+      this.el.goWallet.textContent = `BANK: 🛹 ${info.wallet}`;
+      const affordable = info.wallet >= info.cost;
+      this.el.continueBtn.textContent = `▶ CONTINUE — 🛹 ${info.cost}`;
+      this.el.continueBtn.classList.toggle('hidden', !affordable);
+
+      const ranked = info.mode === 'ranked';
+      this.el.goLeaderboard.classList.toggle('hidden', !ranked);
+      if (ranked) {
+        const rows = (info.leaderboard ?? [])
+          .map((e, i) => `<div class="lb-row"><span>${['🥇', '🥈', '🥉'][i] ?? i + 1}</span><span>${e.score}</span></div>`)
+          .join('');
+        this.el.goLeaderboard.innerHTML =
+          `<div class="lb-title">WEEKLY POT 🛹 ${info.pot} <span class="preview-tag">PREVIEW</span></div>${rows || '<div class="lb-row">be the first!</div>'}`;
+      }
+    }
     this.showScreen('gameover');
+  }
+
+  // ----------------------------------------------------------------- store ---
+  // Build tiles once; onSelect(slot, id) is called on tap (game decides buy
+  // vs equip). Tiles are re-styled by renderStore().
+  buildStore(onSelect) {
+    this.storeTiles = {};
+    this.el.storeSlots.innerHTML = '';
+    for (const slot of PART_SLOTS) {
+      const row = document.createElement('div');
+      row.className = 'store-row';
+      row.innerHTML = `<span class="sel-label">${SLOT_LABELS[slot]}</span>`;
+      const tiles = document.createElement('div');
+      tiles.className = 'store-tiles';
+      this.storeTiles[slot] = CONFIG.parts[slot].map((part) => {
+        const t = document.createElement('button');
+        t.className = 'store-tile';
+        const swatch = slot === 'deck' ? (part.glow ?? part.deck) : part.cosmetic.color;
+        t.innerHTML =
+          `<span class="tile-chip" style="background:${hex(swatch)}"></span>` +
+          `<span class="tile-name">${part.name}</span>` +
+          `<span class="tile-stat">${SLOT_STAT[slot](part.stats)}</span>` +
+          `<span class="tile-cost"></span>`;
+        t.addEventListener('click', () => onSelect(slot, part.id));
+        for (const type of ['touchstart', 'touchend']) t.addEventListener(type, (e) => e.stopPropagation());
+        tiles.appendChild(t);
+        return t;
+      });
+      row.appendChild(tiles);
+      this.el.storeSlots.appendChild(row);
+    }
+  }
+
+  renderStore(state) {
+    this.el.storeBalance.textContent = state.balance;
+    this.el.storePot.textContent = state.pot;
+    for (const slot of PART_SLOTS) {
+      CONFIG.parts[slot].forEach((part, i) => {
+        const tile = this.storeTiles[slot][i];
+        const owned = state.owned[slot][i];
+        const equipped = state.equipped[slot] === part.id;
+        tile.classList.toggle('owned', owned && !equipped);
+        tile.classList.toggle('equipped', equipped);
+        const affordable = owned || part.cost <= state.balance;
+        tile.classList.toggle('locked', !affordable);
+        tile.querySelector('.tile-cost').textContent = equipped
+          ? 'EQUIPPED'
+          : owned
+            ? 'EQUIP'
+            : `🛹 ${part.cost}`;
+      });
+    }
+  }
+
+  showStore(state) {
+    this.renderStore(state);
+    this.showScreen('store');
   }
 
   hideOverlays() {

@@ -125,18 +125,75 @@ const CHARACTERS = [
   { name: 'GNARLY', colors: { skin: 0x8d5524, shirt: 0xe67e22, sleeve: 0xd35400, pants: 0x17202a, cap: 0xecf0f1, hair: 0x111111, shoe: 0x111111 } },
 ];
 
-// Selectable rides. Skateboards roll on wheels; hoverboards float with an
-// under-glow, glide on held jump, magnet-grind rails, and unlock the
-// futuristic trick set (see CONFIG.tricks / hoverTrickFor).
-const BOARDS = [
-  { name: 'WOOD', ride: 'skate', deck: 0x6c3f18 },
-  { name: 'FIRE', ride: 'skate', deck: 0xc0392b },
-  { name: 'AQUA', ride: 'skate', deck: 0x16a085 },
-  { name: 'GOLD', ride: 'skate', deck: 0xf1c40f },
-  { name: 'NEON', ride: 'hover', deck: 0x1c2733, glow: 0x2ee6ff },
-  { name: 'PLASMA', ride: 'hover', deck: 0x2a1633, glow: 0xff3df2 },
-  { name: 'VOLT', ride: 'hover', deck: 0x14290f, glow: 0x8aff3d },
+// ---------------------------------------------------------------- parts ---
+// The store sells parts across four slots. Each part has a coin `cost`
+// (starter parts are free and owned by default) and `stats` multipliers that
+// apply in CASUAL play; RANKED normalizes every multiplier to 1 so the pot
+// leaderboard stays fair (see computeStats). `deck` doubles as the ride
+// selector — hoverboard decks carry ride:'hover' + a glow color.
+//
+// Deck slot (formerly BOARDS): stats.scoreMul boosts distance/trick score.
+const DECKS = [
+  { id: 'deck-wood', name: 'WOOD', ride: 'skate', deck: 0x6c3f18, cost: 0, stats: { scoreMul: 1.0 } },
+  { id: 'deck-fire', name: 'FIRE', ride: 'skate', deck: 0xc0392b, cost: 120, stats: { scoreMul: 1.1 } },
+  { id: 'deck-aqua', name: 'AQUA', ride: 'skate', deck: 0x16a085, cost: 120, stats: { scoreMul: 1.1 } },
+  { id: 'deck-gold', name: 'GOLD', ride: 'skate', deck: 0xf1c40f, cost: 300, stats: { scoreMul: 1.25 } },
+  { id: 'deck-neon', name: 'NEON', ride: 'hover', deck: 0x1c2733, glow: 0x2ee6ff, cost: 500, stats: { scoreMul: 1.15 } },
+  { id: 'deck-plasma', name: 'PLASMA', ride: 'hover', deck: 0x2a1633, glow: 0xff3df2, cost: 500, stats: { scoreMul: 1.15 } },
+  { id: 'deck-volt', name: 'VOLT', ride: 'hover', deck: 0x14290f, glow: 0x8aff3d, cost: 700, stats: { scoreMul: 1.2 } },
 ];
+
+// Wheels → speedMul (top speed / acceleration). cosmetic: color + radius.
+const WHEELS = [
+  { id: 'wheels-street', name: 'STREET', cost: 0, stats: { speedMul: 1.0 }, cosmetic: { color: 0xf5f0e6, radius: 0.09 } },
+  { id: 'wheels-race', name: 'RACE', cost: 150, stats: { speedMul: 1.12 }, cosmetic: { color: 0x2d3436, radius: 0.085 } },
+  { id: 'wheels-turbo', name: 'TURBO', cost: 400, stats: { speedMul: 1.25 }, cosmetic: { color: 0x2ee6ff, radius: 0.1 } },
+];
+
+// Trucks → handlingMul (lane snappiness) + balanceMul (grind drift resist).
+const TRUCKS = [
+  { id: 'trucks-basic', name: 'BASIC', cost: 0, stats: { handlingMul: 1.0, balanceMul: 1.0 }, cosmetic: { color: 0x95a5a6 } },
+  { id: 'trucks-pro', name: 'PRO', cost: 150, stats: { handlingMul: 1.15, balanceMul: 1.1 }, cosmetic: { color: 0xd4af37 } },
+  { id: 'trucks-elite', name: 'ELITE', cost: 400, stats: { handlingMul: 1.3, balanceMul: 1.25 }, cosmetic: { color: 0xb0c4de } },
+];
+
+// Spinners (bearings) → trickSpeedMul (<1 = spin finishes faster, easier to
+// land) + trickScoreMul. cosmetic: wheel accent color.
+const SPINNERS = [
+  { id: 'spin-basic', name: 'BASIC', cost: 0, stats: { trickSpeedMul: 1.0, trickScoreMul: 1.0 }, cosmetic: { color: 0x40342a } },
+  { id: 'spin-fast', name: 'FAST', cost: 150, stats: { trickSpeedMul: 0.85, trickScoreMul: 1.15 }, cosmetic: { color: 0xe67e22 } },
+  { id: 'spin-hyper', name: 'HYPER', cost: 400, stats: { trickSpeedMul: 0.7, trickScoreMul: 1.35 }, cosmetic: { color: 0xff3df2 } },
+];
+
+const PARTS = { deck: DECKS, wheels: WHEELS, trucks: TRUCKS, spinners: SPINNERS };
+export const PART_SLOTS = ['deck', 'wheels', 'trucks', 'spinners'];
+
+// Starter loadout — the free basic skate a new player owns.
+export const DEFAULT_LOADOUT = {
+  deck: 'deck-wood', wheels: 'wheels-street', trucks: 'trucks-basic', spinners: 'spin-basic',
+};
+
+// Neutral stat baseline; also exactly what RANKED mode uses.
+const BASE_STATS = {
+  speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1, trickSpeedMul: 1, trickScoreMul: 1,
+};
+
+export function partById(slot, id) {
+  return PARTS[slot].find((p) => p.id === id) ?? PARTS[slot][0];
+}
+
+// Resolve an equipped-loadout (slot→id) into effective stat multipliers.
+// RANKED returns the neutral baseline (cosmetics still apply elsewhere), so
+// purchased upgrades never advantage the pot leaderboard.
+export function computeStats(loadout, mode) {
+  const stats = { ...BASE_STATS };
+  if (mode === 'ranked') return stats;
+  for (const slot of PART_SLOTS) {
+    const part = partById(slot, loadout[slot]);
+    for (const [k, v] of Object.entries(part.stats ?? {})) stats[k] = v;
+  }
+  return stats;
+}
 
 export const CONFIG = Object.freeze({
   // Lanes (x positions). Player runs at z = 0, world scrolls toward +z.
@@ -144,7 +201,11 @@ export const CONFIG = Object.freeze({
 
   // Cosmetics (character + board selection, saved to localStorage).
   characters: CHARACTERS,
-  boards: BOARDS,
+  boards: DECKS, // deck slot doubles as the ride/board picker on the select screen
+  parts: PARTS,
+
+  // Store economy: fraction of every purchase routed to the weekly pot.
+  potCutPct: 0.2,
   laneWidth: 2,
   laneChangeTime: 0.16,
 
@@ -168,9 +229,11 @@ export const CONFIG = Object.freeze({
 
   // Verticality: kicker ramps launch you onto shipping-container tops for a
   // second level of height you can roll along.
-  containerTop: 2.0, // ride height on top of a container
+  // containerTop must be ollie-able: jump apex is jumpVelocity²/2g ≈ 1.56, so
+  // with landMargin an ollie (or a kicker) both land the top.
+  containerTop: 1.5, // ride height on top of a container
   containerLength: 12, // z extent — long enough to land on at any speed and ride
-  kickerLaunch: 11, // upward velocity a kicker pops you with (clears containerTop)
+  kickerLaunch: 9.5, // upward velocity a kicker pops you with (clears containerTop)
   landMargin: 0.35, // feet-below-top slack: within this you land, below it you hit the side
   platformScoreRate: 30, // bonus points/second while riding a raised platform
 
@@ -218,6 +281,15 @@ export const CONFIG = Object.freeze({
   // Scoring
   distanceScoreRate: 1.5, // points per unit travelled
   coinValue: 10,
+
+  // Continues: coins bank across runs (localStorage wallet); a continue costs
+  // coins and doubles in price with each use within the same run.
+  continueBaseCost: 15,
+  continueCostGrowth: 2,
+
+  // Dev: start runs at this level (1-based) instead of level 1. 0 = off.
+  // Overridable per-session with a ?level=N URL param (e.g. localhost:5173/?level=9).
+  devStartLevel: 0,
 
   // Camera
   camHeight: 3.1,

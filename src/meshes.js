@@ -121,6 +121,8 @@ export function buildSkater(palette = {}) {
     skin: mat(p.skin), shirt: mat(p.shirt), sleeve: mat(p.sleeve), pants: mat(p.pants),
     cap: mat(p.cap), hair: mat(p.hair), shoe: mat(p.shoe), deck: mat(p.deck),
     glow: new THREE.MeshLambertMaterial({ color: p.glow, emissive: p.glow }),
+    // Per-instance so equipped wheel/truck parts can recolor them live.
+    wheel: mat(0xf5f0e6), truck: mat(0x95a5a6),
   };
 
   const group = new THREE.Group();
@@ -144,15 +146,15 @@ export function buildSkater(palette = {}) {
     [-0.14, 0.32],
     [0.14, 0.32],
   ]) {
-    const w = new THREE.Mesh(GEO.wheel, MATS.wheel);
+    const w = new THREE.Mesh(GEO.wheel, M.wheel);
     w.rotation.z = Math.PI / 2;
     w.position.set(x, 0.09, z);
     skateGear.add(w);
     wheels.push(w);
   }
   skateGear.add(
-    box(MATS.truck, 0.22, 0.07, 0.1, 0, 0.18, -0.32),
-    box(MATS.truck, 0.22, 0.07, 0.1, 0, 0.18, 0.32)
+    box(M.truck, 0.22, 0.07, 0.1, 0, 0.18, -0.32),
+    box(M.truck, 0.22, 0.07, 0.1, 0, 0.18, 0.32)
   );
   board.add(skateGear);
 
@@ -409,12 +411,13 @@ export function buildHole() {
   return g;
 }
 
-// A shipping container: a long corrugated box with a flat, ride-able top at
-// y ≈ CONFIG.containerTop. Ollie onto it (off a kicker) and roll along.
-export function buildContainer(length) {
+// A shipping container: a long corrugated box with a flat, ride-able top
+// (height = CONFIG.containerTop, passed in so visual and collider agree).
+// Ollie onto it — or kick off a ramp — and roll along the top.
+export function buildContainer(length, height = 1.5) {
   const g = new THREE.Group();
   const top = MATS_CONTAINER[Math.floor(Math.random() * MATS_CONTAINER.length)];
-  const h = 2.0;
+  const h = height;
   const w = 1.9;
   g.add(box(top, w, h, length, 0, h / 2, 0));
   // Corrugated ribs down the long sides.
@@ -437,11 +440,12 @@ export function buildContainer(length) {
 
 // A kicker ramp: a wedge that rises toward the player's approach so rolling
 // over it pops you into the air. Obstacles approach from -z toward +z, so the
-// high lip faces +z (the near side).
+// high lip faces +z (the near side). Sized generously so it reads clearly at
+// speed and is easy to roll over.
 export function buildKicker() {
   const g = new THREE.Group();
-  const w = 1.7;
-  const len = 1.4;
+  const w = 1.9;
+  const len = 2.2;
   const lip = 0.9;
   // Slanted top face (low at the far side, high at the near lip).
   const face = box(MATS.ramp, w, 0.14, len * 1.5, 0, lip / 2, 0);

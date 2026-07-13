@@ -33,9 +33,9 @@ export const OBSTACLE_TYPES = {
     band: BAND.PLATFORM,
     top: CONFIG.containerTop,
     depth: CONFIG.containerLength,
-    build: () => buildContainer(CONFIG.containerLength),
+    build: () => buildContainer(CONFIG.containerLength, CONFIG.containerTop),
   },
-  kicker: { band: BAND.KICKER, top: 0.9, depth: 1.4, launch: CONFIG.kickerLaunch, build: buildKicker },
+  kicker: { band: BAND.KICKER, top: 0.9, depth: 2.2, launch: CONFIG.kickerLaunch, build: buildKicker },
 };
 
 export class ObstaclePool {

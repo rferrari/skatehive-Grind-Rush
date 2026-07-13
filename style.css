@@ -185,6 +185,12 @@ body {
   font-weight: bold;
 }
 
+.overlay .wallet {
+  font-size: 17px;
+  font-weight: bold;
+  color: #ffe14d;
+}
+
 #install-btn {
   margin-top: 6px;
   padding: 12px 26px;
@@ -290,6 +296,114 @@ body {
 .btn-secondary:active {
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Menu button cluster */
+.menu-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.preview-tag {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #0a0a0a;
+  background: #ffe14d;
+  padding: 1px 6px;
+  border-radius: 5px;
+  vertical-align: middle;
+}
+
+/* Weekly leaderboard on the game-over screen */
+.leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-weight: bold;
+  min-width: 180px;
+}
+.lb-title {
+  font-size: 15px;
+  color: #ffe14d;
+  margin-bottom: 2px;
+}
+.lb-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  font-size: 18px;
+}
+
+/* Store */
+#store-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(92vw, 620px);
+}
+
+.store-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.store-tiles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.store-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 92px;
+  padding: 6px 4px;
+  font: inherit;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.tile-chip {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.tile-name {
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.tile-stat {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.tile-cost {
+  font-size: 12px;
+  font-weight: bold;
+  color: #ffe14d;
+}
+.store-tile.owned {
+  border-color: #fff;
+}
+.store-tile.equipped {
+  border-color: #2ee6ff;
+  box-shadow: 0 0 8px 1px #2ee6ff;
+}
+.store-tile.equipped .tile-cost {
+  color: #2ee6ff;
+}
+.store-tile.locked {
+  opacity: 0.45;
 }
 
 /* Character + board selector */

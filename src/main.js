@@ -22,7 +22,7 @@ const game = new Game(scene, camera);
 // skater is on-screen behind the menu, so picks preview instantly.
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 
-function buildSwatches(containerId, items, colorOf, getActive, onPick) {
+function buildSwatches(containerId, items, colorOf, getActive, onPick, isLocked = null) {
   const wrap = document.getElementById(containerId);
   const buttons = items.map((item, i) => {
     const btn = document.createElement('button');
@@ -47,15 +47,20 @@ function buildSwatches(containerId, items, colorOf, getActive, onPick) {
   }
   function refresh() {
     const active = getActive();
-    buttons.forEach((b, i) => b.classList.toggle('active', i === active));
+    buttons.forEach((b, i) => {
+      b.classList.toggle('active', i === active);
+      if (isLocked) b.classList.toggle('locked', isLocked(items[i]));
+    });
   }
   refresh();
 }
 
 buildSwatches('char-options', CONFIG.characters, (c) => c.colors.shirt,
   () => game.charIndex, (i) => game.selectCharacter(i));
+// Deck row: unowned decks are dimmed (buy them in the store); owned ones equip.
 buildSwatches('board-options', CONFIG.boards, (b) => (b.ride === 'hover' ? b.glow : b.deck),
-  () => game.boardIndex, (i) => game.selectBoard(i));
+  () => game.boardIndex, (i) => game.selectBoard(i),
+  (b) => !game.ledger.owns('deck', b.id));
 
 // Keep taps on UI controls from also reaching the window touch handler (which
 // would queue a spurious "start"/jump).
@@ -73,6 +78,28 @@ stopTouch(selectGo);
 const menuChange = document.getElementById('menu-change');
 menuChange.addEventListener('click', () => game.goToSelect());
 stopTouch(menuChange);
+
+// Continue the ended run by spending banked coins.
+const continueBtn = document.getElementById('continue-btn');
+continueBtn.addEventListener('click', () => game.continueRun());
+stopTouch(continueBtn);
+
+// Store: build tiles once, wire buy/equip (game decides which), re-render.
+game.hud.buildStore(async (slot, id) => {
+  const state = await game.storeSelect(slot, id);
+  game.hud.renderStore(state);
+});
+const menuStore = document.getElementById('menu-store');
+menuStore.addEventListener('click', () => game.goToStore());
+stopTouch(menuStore);
+
+const storeBack = document.getElementById('store-back');
+storeBack.addEventListener('click', () => game.goToMenu());
+stopTouch(storeBack);
+
+const menuRanked = document.getElementById('menu-ranked');
+menuRanked.addEventListener('click', () => game.startRun('ranked'));
+stopTouch(menuRanked);
 
 // ---- PWA install button (mobile menu screen) ----
 // Chrome/Android fires beforeinstallprompt when the app is installable; we

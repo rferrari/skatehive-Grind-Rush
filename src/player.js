@@ -23,8 +23,22 @@ export class Player {
     this.looseBoard = null; // board mesh once detached on a bail
     this.looseBoardSpeed = 0;
     this.ride = 'skate'; // 'skate' | 'hover' — survives reset()
+    // Loadout stat multipliers (game.js sets these per run from computeStats);
+    // neutral by default so headless/test callers behave like base tuning.
+    this.stats = { speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1, trickSpeedMul: 1, trickScoreMul: 1 };
     scene.add(group);
     this.reset();
+  }
+
+  // Apply the cosmetic side of an equipped loadout: wheel color/size and truck
+  // color. (Deck color/glow + ride go through applyPalette/setRide.)
+  applyLoadoutCosmetics(wheelsPart, trucksPart) {
+    if (wheelsPart?.cosmetic) {
+      this.mats.wheel.color.setHex(wheelsPart.cosmetic.color);
+      const r = wheelsPart.cosmetic.radius ?? 0.09;
+      for (const w of this.parts.wheels) w.scale.setScalar(r / 0.09);
+    }
+    if (trucksPart?.cosmetic) this.mats.truck.color.setHex(trucksPart.cosmetic.color);
   }
 
   // Recolor the skater/board live from a selected character + board palette.
@@ -212,14 +226,16 @@ export class Player {
       return;
     }
 
-    // Lateral: exponential approach to the target lane.
+    // Lateral: exponential approach to the target lane. Better trucks (higher
+    // handlingMul) shorten the time constant for snappier lane changes.
     const targetX = CONFIG.lanes[this.laneIndex];
-    this.x = approach(this.x, targetX, dt, CONFIG.laneChangeTime / 3);
+    this.x = approach(this.x, targetX, dt, CONFIG.laneChangeTime / (3 * this.stats.handlingMul));
     if (Math.abs(this.x - targetX) < 0.01) this.x = targetX;
 
     // Active trick spins the board; finishing it fires the score event.
+    // Faster spinners (trickSpeedMul < 1) complete the spin sooner.
     if (this.trick) {
-      this.trickT += dt / CONFIG.trickDuration;
+      this.trickT += dt / (CONFIG.trickDuration * this.stats.trickSpeedMul);
       if (this.trickT >= 1) {
         this.events.push({ type: 'trick', name: this.trick });
         this.lastTrickEnd = this.time;
@@ -238,8 +254,9 @@ export class Player {
         const lean = this.balance === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(this.balance);
         const pressure = 0.45 + Math.min(this.grindTime * 0.2, 1.1);
         // The hoverboard magnet-locks onto rails: balance drifts at half rate.
+        // Better trucks (higher balanceMul) further resist the drift.
         const magnet = this.isHover ? CONFIG.hoverBalanceDrift : 1;
-        this.balance += lean * CONFIG.balanceDriftMax * pressure * magnet * dt;
+        this.balance += (lean * CONFIG.balanceDriftMax * pressure * magnet * dt) / this.stats.balanceMul;
       }
       if (Math.abs(this.balance) > 1) {
         this.events.push({ type: 'balanceBail' });
