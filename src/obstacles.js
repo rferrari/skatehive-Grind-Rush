@@ -1,10 +1,11 @@
 // Obstacle type definitions, mesh pools, and collider data.
 // Height bands: LOW = jumpable, FULL = must dodge, OVERHEAD = slide under,
-// RAIL = grindable (never a direct hit), GAP = a hole — clear it in the air.
+// RAIL = grindable (never a direct hit), GAP = a hole — clear it in the air,
+// PLATFORM = solid side but landable top (ride along it), KICKER = launch pad.
 import { CONFIG } from './config.js';
 import {
   buildCone, buildBarrier, buildCrate, buildSign, buildRail,
-  buildCar, buildBike, buildHole,
+  buildCar, buildBike, buildHole, buildContainer, buildKicker,
 } from './meshes.js';
 
 export const BAND = {
@@ -13,6 +14,8 @@ export const BAND = {
   OVERHEAD: 'overhead',
   RAIL: 'rail',
   GAP: 'gap',
+  PLATFORM: 'platform',
+  KICKER: 'kicker',
 };
 
 export const OBSTACLE_TYPES = {
@@ -24,6 +27,13 @@ export const OBSTACLE_TYPES = {
   car: { band: BAND.FULL, top: 1.6, depth: 3.6, build: buildCar },
   bike: { band: BAND.LOW, top: 0.9, depth: 0.9, build: buildBike },
   hole: { band: BAND.GAP, top: 0, depth: 1.5, build: buildHole },
+  container: {
+    band: BAND.PLATFORM,
+    top: CONFIG.containerTop,
+    depth: CONFIG.containerLength,
+    build: () => buildContainer(CONFIG.containerLength),
+  },
+  kicker: { band: BAND.KICKER, top: 0.9, depth: 1.4, launch: CONFIG.kickerLaunch, build: buildKicker },
 };
 
 export class ObstaclePool {
@@ -50,6 +60,7 @@ export class ObstaclePool {
       top: def.top ?? 0,
       clearance: def.clearance ?? 0,
       halfDepth: def.depth / 2,
+      launch: def.launch ?? 0,
     };
     return mesh;
   }

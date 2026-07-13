@@ -94,6 +94,30 @@ const PATTERNS = [
     coins: [{ lane: 2, z: 8, count: 5 }],
   },
 
+  // ---- Tier 2: verticality — kick up onto a shipping container ----
+  // Roll over the kicker → launch → land on the container top → ride it →
+  // drop off the end. Coins arc up to and run along the top as the reward.
+  {
+    tier: 2,
+    items: [
+      { type: 'kicker', lane: 1, z: 8 },
+      { type: 'container', lane: 1, z: 16 },
+    ],
+    coins: [
+      { lane: 1, z: 9, count: 4, arc: true },
+      { lane: 1, z: 16, count: 5, y: 2.6 },
+    ],
+  },
+  {
+    tier: 2,
+    items: [
+      { type: 'kicker', lane: 0, z: 8 },
+      { type: 'container', lane: 0, z: 16 },
+      { type: 'cone', lane: 2, z: 10 },
+    ],
+    coins: [{ lane: 0, z: 16, count: 5, y: 2.6 }],
+  },
+
   // ---- Tier 3: dense combos ----
   {
     tier: 3,
@@ -169,6 +193,17 @@ const PATTERNS = [
       { type: 'hole', lane: 2, z: 12 },
     ],
     coins: [{ lane: 1, z: 7, count: 7, y: 1.6 }],
+  },
+
+  // ---- Tier 3: container line over a hazard ----
+  {
+    tier: 3,
+    items: [
+      { type: 'kicker', lane: 2, z: 8 },
+      { type: 'container', lane: 2, z: 16 },
+      { type: 'hole', lane: 1, z: 12 },
+    ],
+    coins: [{ lane: 2, z: 16, count: 6, y: 2.6 }],
   },
 
   // ---- Tier 4: dawn rush — everything at once ----

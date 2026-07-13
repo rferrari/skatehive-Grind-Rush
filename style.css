@@ -218,6 +218,52 @@ body {
   }
 }
 
+/* Character + board selector on the menu */
+#selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.sel-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.sel-label {
+  width: 74px;
+  text-align: right;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  opacity: 0.9;
+}
+
+.swatches {
+  display: flex;
+  gap: 8px;
+}
+
+.swatch {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.swatch.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #ffe14d, 2px 2px 0 rgba(0, 0, 0, 0.35);
+  transform: scale(1.08);
+}
+
 .hidden {
   display: none !important;
 }
