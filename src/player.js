@@ -6,7 +6,7 @@
 // Gameplay events (trick landed, balance bail, ...) are queued on
 // this.events and drained by game.js via popEvents().
 import { CONFIG } from './config.js';
-import { buildSkater } from './meshes.js';
+import { buildSkater, DEFAULT_SKATER_PALETTE } from './meshes.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 // Frame-rate independent exponential approach.
@@ -15,11 +15,23 @@ const approach = (current, target, dt, tau) =>
 
 export class Player {
   constructor(scene) {
-    const { group, parts } = buildSkater();
+    const { group, parts, mats } = buildSkater();
+    this.scene = scene;
     this.group = group;
     this.parts = parts;
+    this.mats = mats; // per-part materials, recolored by applyPalette()
+    this.looseBoard = null; // board mesh once detached on a bail
+    this.looseBoardSpeed = 0;
     scene.add(group);
     this.reset();
+  }
+
+  // Recolor the skater/board live from a selected character + board palette.
+  applyPalette(palette) {
+    const p = { ...DEFAULT_SKATER_PALETTE, ...palette };
+    for (const key of Object.keys(this.mats)) {
+      if (p[key] !== undefined) this.mats[key].color.setHex(p[key]);
+    }
   }
 
   reset() {
@@ -44,6 +56,13 @@ export class Player {
     this.group.rotation.set(0, 0, 0);
     this.group.position.set(this.x, 0, 0);
     const { board, body, torso, arms } = this.parts;
+    // Re-attach the board if a previous bail detached it into the scene.
+    if (this.looseBoard) {
+      this.scene.remove(this.looseBoard);
+      this.group.add(this.looseBoard);
+      this.looseBoard = null;
+      this.looseBoardSpeed = 0;
+    }
     board.position.set(0, 0, 0);
     board.rotation.set(0, 0, 0);
     body.scale.set(1, 1, 1);
@@ -89,6 +108,15 @@ export class Player {
     }
   }
 
+  // Popped into the air by a kicker ramp — a bigger boost than a manual ollie,
+  // enough to clear onto a container top.
+  launch(power) {
+    if (this.bailing || this.grinding || this.airborne) return;
+    this.vy = power;
+    this.airborne = true;
+    this.sliding = false;
+  }
+
   slide() {
     if (this.bailing || this.airborne || this.grinding) return;
     this.sliding = true;
@@ -130,18 +158,36 @@ export class Player {
     this.vy = upVelocity;
   }
 
-  bail() {
+  // Wipe out: the board pops off and keeps rolling down the street (at the
+  // speed you were carrying) while the skater tumbles.
+  bail(speed = 0) {
     this.bailing = true;
     this.bailT = 0;
+    const board = this.parts.board;
+    this.group.remove(board);
+    this.scene.add(board);
+    board.position.set(this.x, this.y + 0.02, 0);
+    board.rotation.set(0, 0, 0);
+    this.looseBoard = board;
+    this.looseBoardSpeed = Math.max(speed, 6);
   }
 
   // -------------------------------------------------------------- update ---
-  update(dt) {
+  // floorY is the support height directly under the player this frame (0 on
+  // the ground, a container top when riding one) — supplied by game.js from
+  // queryFloor(). Defaults to ground so headless/unit callers stay simple.
+  update(dt, floorY = 0) {
     this.time += dt;
 
     if (this.bailing) {
       this.bailT = Math.min(this.bailT + dt / 0.45, 1);
       this.applyBailPose();
+      // The detached board rolls on ahead, slowing to a stop, wheels spinning.
+      if (this.looseBoard) {
+        this.looseBoardSpeed = Math.max(0, this.looseBoardSpeed - 7 * dt);
+        this.looseBoard.position.z += this.looseBoardSpeed * dt;
+        for (const w of this.parts.wheels) w.rotation.x += this.looseBoardSpeed * dt * 4;
+      }
       return;
     }
 
@@ -185,16 +231,30 @@ export class Player {
     } else if (this.airborne) {
       this.y += this.vy * dt;
       this.vy -= CONFIG.gravity * dt;
-      if (this.y <= 0) {
-        this.y = 0;
+      // Land on whatever surface is under us — ground or a container top.
+      // queryFloor only reports a container top once we've risen to within a
+      // step of it, so this also "catches" a launched player onto a ledge on
+      // the way up (ollie-onto-ledge) rather than needing a perfect descent.
+      if (this.y <= floorY) {
+        this.y = floorY;
         this.vy = 0;
         this.airborne = false;
         this.trick = null; // landed mid-spin: trick fizzles, no points
         this.trickT = 0;
       }
-    } else if (this.sliding) {
-      this.slideTime += dt;
-      if (this.slideTime > CONFIG.slideDuration) this.sliding = false;
+    } else {
+      // Grounded (rolling or sliding). If the floor dropped away beneath us
+      // — rolled off the end of a container — step off into a fall.
+      if (this.y > floorY + 0.02) {
+        this.airborne = true;
+        this.vy = 0;
+      } else {
+        this.y = floorY;
+      }
+      if (this.sliding) {
+        this.slideTime += dt;
+        if (this.slideTime > CONFIG.slideDuration) this.sliding = false;
+      }
     }
 
     this.applyPose(dt);
@@ -282,11 +342,10 @@ export class Player {
   applyBailPose() {
     const t = this.bailT;
     const ease = t * (2 - t); // ease-out
+    // The skater tumbles and drops; the board is detached and rolls on its own
+    // (see update()), so it isn't touched here.
     this.group.position.set(this.x, Math.max(0, this.y * (1 - ease)), 0);
     this.group.rotation.z = ease * 1.9;
     this.group.rotation.y = ease * 0.6;
-    // Board shoots out ahead.
-    this.parts.board.position.z = -ease * 2.2;
-    this.parts.board.rotation.z = ease * 3;
   }
 }

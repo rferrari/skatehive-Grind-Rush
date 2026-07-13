@@ -7,9 +7,18 @@ import { CoinManager } from './coins.js';
 import { ChunkManager } from './chunks.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
-import { checkCollisions } from './collision.js';
+import { checkCollisions, queryFloor } from './collision.js';
 
 const RESTART_LOCKOUT = 0.7; // seconds before game-over screen accepts input
+
+// Cosmetic-selection persistence (clamped so a shrunk preset list can't break).
+function loadIndex(key, count) {
+  const v = Number(localStorage.getItem(key));
+  return Number.isInteger(v) && v >= 0 && v < count ? v : 0;
+}
+function saveIndex(key, value) {
+  localStorage.setItem(key, String(value));
+}
 
 export class Game {
   constructor(scene, camera) {
@@ -32,8 +41,34 @@ export class Game {
     this.lastAirDirTime = -1;
     this.camX = 0;
 
+    // Cosmetic selection, restored from localStorage and applied to the skater.
+    this.charIndex = loadIndex('skatehive-character', CONFIG.characters.length);
+    this.boardIndex = loadIndex('skatehive-board', CONFIG.boards.length);
+    this.applySelection();
+
     this.hud.showMenu();
     this.updateCamera(0);
+  }
+
+  // Build the active palette (character colors + board deck) and paint it on.
+  applySelection() {
+    const palette = {
+      ...CONFIG.characters[this.charIndex].colors,
+      deck: CONFIG.boards[this.boardIndex].deck,
+    };
+    this.player.applyPalette(palette);
+  }
+
+  selectCharacter(i) {
+    this.charIndex = ((i % CONFIG.characters.length) + CONFIG.characters.length) % CONFIG.characters.length;
+    saveIndex('skatehive-character', this.charIndex);
+    this.applySelection();
+  }
+
+  selectBoard(i) {
+    this.boardIndex = ((i % CONFIG.boards.length) + CONFIG.boards.length) % CONFIG.boards.length;
+    saveIndex('skatehive-board', this.boardIndex);
+    this.applySelection();
   }
 
   get currentSpeed() {
@@ -71,7 +106,7 @@ export class Game {
   }
 
   gameOver() {
-    this.player.bail();
+    this.player.bail(this.speed);
     const finalScore = Math.floor(this.score);
     const prev = this.hud.loadHighScore();
     const isRecord = finalScore > prev;
@@ -155,7 +190,9 @@ export class Game {
       }
     }
 
-    this.player.update(dt);
+    // Support height under the player (0 = ground, container top when riding).
+    const floorY = queryFloor(this.player, this.chunks.active);
+    this.player.update(dt, floorY);
     this.world.update(dt, this.speed);
     this.chunks.update(dt, this.speed, this.distance);
     const picked = this.coins.update(dt, this.speed, this.player);
@@ -185,12 +222,16 @@ export class Game {
       return;
     }
     if (event?.kind === 'grind') this.player.enterGrind(event.mesh);
+    else if (event?.kind === 'launch') this.player.launch(event.power);
 
     this.score += CONFIG.distanceScoreRate * this.speed * dt * 0.1;
     // Grinds pay more the longer you hold the balance.
     if (this.player.grinding) {
       this.score +=
         (CONFIG.grindScoreRate + CONFIG.grindScoreRamp * this.player.grindTime) * dt;
+    } else if (!this.player.airborne && this.player.y > 0.5) {
+      // Riding along a raised platform (container top) pays a steady bonus.
+      this.score += CONFIG.platformScoreRate * dt;
     }
 
     this.hud.update(this.score, this.coinCount, this.player, this.level);
@@ -200,8 +241,11 @@ export class Game {
     const cam = this.camera;
     const targetX = this.player.x * 0.5;
     this.camX = dt ? this.camX + (targetX - this.camX) * Math.min(1, dt * 8) : targetX;
-    cam.position.set(this.camX, CONFIG.camHeight + this.player.y * 0.25, CONFIG.camBack);
-    cam.lookAt(this.camX * 0.6, 1.2, CONFIG.camLookAhead);
+    // Lift the camera and its look target with the player so a rider up on a
+    // container stays comfortably framed instead of climbing out of view.
+    const followY = this.player.y * 0.55;
+    cam.position.set(this.camX, CONFIG.camHeight + followY, CONFIG.camBack);
+    cam.lookAt(this.camX * 0.6, 1.2 + followY, CONFIG.camLookAhead);
 
     // FOV pushes out with speed for a sense of acceleration.
     const speedT =

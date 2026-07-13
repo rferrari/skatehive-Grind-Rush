@@ -24,6 +24,7 @@ const MATS = {
   barrierWhite: mat(0xecf0f1),
   crate: mat(0x8e6e3a),
   crateDark: mat(0x6b5227),
+  containerDoor: mat(0x2c3e50),
   signPost: mat(0x7f8c8d),
   signPanel: mat(0x27ae60),
   rail: mat(0xb0b8bf),
@@ -102,17 +103,32 @@ function tube(material, length, x, y, z, rx = 0, rz = 0) {
 }
 
 // ---------------------------------------------------------------- skater ---
-// Returns { group, parts } — parts are the sub-groups player.js animates.
-export function buildSkater() {
+// Default skater palette; a selected character/board overrides these.
+export const DEFAULT_SKATER_PALETTE = {
+  skin: 0xe0ac69, shirt: 0x2e86de, sleeve: 0x1b6ec2, pants: 0x2d3436,
+  cap: 0xd63031, hair: 0x3a2a1a, shoe: 0xf5f0e6, deck: 0x6c3f18,
+};
+
+// Returns { group, parts, mats } — `parts` are the sub-groups player.js
+// animates; `mats` are the per-instance materials player.applyPalette()
+// recolors so the skater/board can be re-skinned live without a rebuild.
+export function buildSkater(palette = {}) {
+  const p = { ...DEFAULT_SKATER_PALETTE, ...palette };
+  // Per-instance materials for the customizable parts (few skaters exist).
+  const M = {
+    skin: mat(p.skin), shirt: mat(p.shirt), sleeve: mat(p.sleeve), pants: mat(p.pants),
+    cap: mat(p.cap), hair: mat(p.hair), shoe: mat(p.shoe), deck: mat(p.deck),
+  };
+
   const group = new THREE.Group();
 
   // Board (deck + grip + trucks + wheels), origin at ground level.
   const board = new THREE.Group();
-  const deck = box(MATS.deck, 0.32, 0.05, 1.05, 0, 0.26, 0);
+  const deck = box(M.deck, 0.32, 0.05, 1.05, 0, 0.26, 0);
   const grip = box(MATS.grip, 0.3, 0.015, 1.0, 0, 0.29, 0);
-  const nose = box(MATS.deck, 0.3, 0.05, 0.16, 0, 0.3, -0.56);
+  const nose = box(M.deck, 0.3, 0.05, 0.16, 0, 0.3, -0.56);
   nose.rotation.x = -0.45;
-  const tail = box(MATS.deck, 0.3, 0.05, 0.16, 0, 0.3, 0.56);
+  const tail = box(M.deck, 0.3, 0.05, 0.16, 0, 0.3, 0.56);
   tail.rotation.x = 0.45;
   board.add(deck, grip, nose, tail);
   const wheels = [];
@@ -142,15 +158,15 @@ export function buildSkater() {
   const legL = new THREE.Group();
   legL.position.set(-0.09, 0, -0.18);
   legL.add(
-    box(MATS.pants, 0.14, 0.55, 0.14, 0, 0.275, 0),
-    box(MATS.shoe, 0.15, 0.09, 0.3, 0, 0.045, 0.04),
+    box(M.pants, 0.14, 0.55, 0.14, 0, 0.275, 0),
+    box(M.shoe, 0.15, 0.09, 0.3, 0, 0.045, 0.04),
     box(MATS.shoeSole, 0.16, 0.03, 0.31, 0, 0.015, 0.04)
   );
   const legR = new THREE.Group();
   legR.position.set(0.09, 0, 0.2);
   legR.add(
-    box(MATS.pants, 0.14, 0.55, 0.14, 0, 0.275, 0),
-    box(MATS.shoe, 0.15, 0.09, 0.3, 0, 0.045, -0.04),
+    box(M.pants, 0.14, 0.55, 0.14, 0, 0.275, 0),
+    box(M.shoe, 0.15, 0.09, 0.3, 0, 0.045, -0.04),
     box(MATS.shoeSole, 0.16, 0.03, 0.31, 0, 0.015, -0.04)
   );
   legs.add(legL, legR);
@@ -158,8 +174,8 @@ export function buildSkater() {
   const torso = new THREE.Group();
   torso.position.y = 0.55;
   torso.add(
-    box(MATS.shirt, 0.36, 0.5, 0.22, 0, 0.25, 0),
-    box(MATS.sleeve, 0.38, 0.12, 0.24, 0, 0.44, 0) // shoulder band
+    box(M.shirt, 0.36, 0.5, 0.22, 0, 0.25, 0),
+    box(M.sleeve, 0.38, 0.12, 0.24, 0, 0.44, 0) // shoulder band
   );
 
   const arms = new THREE.Group();
@@ -167,33 +183,33 @@ export function buildSkater() {
   const armL = new THREE.Group();
   armL.position.x = -0.24;
   armL.add(
-    box(MATS.sleeve, 0.1, 0.2, 0.1, 0, -0.08, 0),
-    box(MATS.skin, 0.09, 0.24, 0.09, 0, -0.28, 0),
-    box(MATS.skin, 0.11, 0.1, 0.11, 0, -0.44, 0) // hand
+    box(M.sleeve, 0.1, 0.2, 0.1, 0, -0.08, 0),
+    box(M.skin, 0.09, 0.24, 0.09, 0, -0.28, 0),
+    box(M.skin, 0.11, 0.1, 0.11, 0, -0.44, 0) // hand
   );
   const armR = new THREE.Group();
   armR.position.x = 0.24;
   armR.add(
-    box(MATS.sleeve, 0.1, 0.2, 0.1, 0, -0.08, 0),
-    box(MATS.skin, 0.09, 0.24, 0.09, 0, -0.28, 0),
-    box(MATS.skin, 0.11, 0.1, 0.11, 0, -0.44, 0)
+    box(M.sleeve, 0.1, 0.2, 0.1, 0, -0.08, 0),
+    box(M.skin, 0.09, 0.24, 0.09, 0, -0.28, 0),
+    box(M.skin, 0.11, 0.1, 0.11, 0, -0.44, 0)
   );
   arms.add(armL, armR);
   torso.add(arms);
 
   const head = new THREE.Group();
   head.position.y = 0.62;
-  const skull = new THREE.Mesh(GEO.head, MATS.skin);
-  const hair = box(MATS.hair, 0.36, 0.1, 0.36, 0, 0.05, 0.06);
-  const capTop = box(MATS.cap, 0.34, 0.1, 0.34, 0, 0.14, 0);
-  const capBrim = box(MATS.cap, 0.3, 0.04, 0.18, 0, 0.1, -0.26);
+  const skull = new THREE.Mesh(GEO.head, M.skin);
+  const hair = box(M.hair, 0.36, 0.1, 0.36, 0, 0.05, 0.06);
+  const capTop = box(M.cap, 0.34, 0.1, 0.34, 0, 0.14, 0);
+  const capBrim = box(M.cap, 0.3, 0.04, 0.18, 0, 0.1, -0.26);
   head.add(skull, hair, capTop, capBrim);
   torso.add(head);
 
   body.add(legs, torso);
   group.add(body);
 
-  return { group, parts: { board, wheels, body, legs, torso, arms, head } };
+  return { group, parts: { board, wheels, body, legs, torso, arms, head }, mats: M };
 }
 
 // ------------------------------------------------------------- obstacles ---
@@ -268,6 +284,9 @@ export function buildRail(length) {
 
 // A parked car blocking the lane (full-height, must dodge).
 const CAR_BODY_MATS = [mat(0xc0392b), mat(0x2980b9), mat(0xf39c12), mat(0x7f8c8d), mat(0x27ae60)];
+
+// Shipping-container body colors (weathered industrial hues).
+const MATS_CONTAINER = [mat(0xb7472a), mat(0x2f6f8f), mat(0xd9a441), mat(0x3f7d4f), mat(0x8a8f94)];
 
 export function buildCar() {
   const g = new THREE.Group();
@@ -362,6 +381,55 @@ export function buildHole() {
   cone.position.set(0.75, 0.3, -1.05);
   cone.rotation.z = 0.35;
   g.add(cone);
+  return g;
+}
+
+// A shipping container: a long corrugated box with a flat, ride-able top at
+// y ≈ CONFIG.containerTop. Ollie onto it (off a kicker) and roll along.
+export function buildContainer(length) {
+  const g = new THREE.Group();
+  const top = MATS_CONTAINER[Math.floor(Math.random() * MATS_CONTAINER.length)];
+  const h = 2.0;
+  const w = 1.9;
+  g.add(box(top, w, h, length, 0, h / 2, 0));
+  // Corrugated ribs down the long sides.
+  const ribs = Math.max(2, Math.round(length / 0.7));
+  for (let i = 0; i < ribs; i++) {
+    const z = -length / 2 + 0.35 + (i / (ribs - 1)) * (length - 0.7);
+    g.add(
+      box(MATS.crateDark, w + 0.04, h * 0.86, 0.12, 0, h / 2, z),
+    );
+  }
+  // Rails top and bottom, and end doors with vertical bars.
+  g.add(
+    box(MATS.crateDark, w + 0.08, 0.16, length + 0.06, 0, h - 0.08, 0),
+    box(MATS.crateDark, w + 0.08, 0.16, length + 0.06, 0, 0.08, 0),
+    box(MATS.containerDoor, w * 0.94, h * 0.9, 0.1, 0, h / 2, length / 2 + 0.02),
+    box(MATS.crateDark, 0.1, h * 0.9, 0.12, 0, h / 2, length / 2 + 0.06),
+  );
+  return g;
+}
+
+// A kicker ramp: a wedge that rises toward the player's approach so rolling
+// over it pops you into the air. Obstacles approach from -z toward +z, so the
+// high lip faces +z (the near side).
+export function buildKicker() {
+  const g = new THREE.Group();
+  const w = 1.7;
+  const len = 1.4;
+  const lip = 0.9;
+  // Slanted top face (low at the far side, high at the near lip).
+  const face = box(MATS.ramp, w, 0.14, len * 1.5, 0, lip / 2, 0);
+  face.rotation.x = Math.atan2(lip, len);
+  g.add(
+    face,
+    box(MATS.rampSide, w, lip, 0.16, 0, lip / 2, len / 2), // back wall under the lip
+    box(MATS.rail, w, 0.08, 0.08, 0, lip + 0.02, len / 2), // coping at the lip
+  );
+  // Solid side triangles (approximated with two stacked boxes) sell the wedge.
+  for (const x of [-w / 2, w / 2]) {
+    g.add(box(MATS.rampSide, 0.06, lip * 0.6, len, x, lip * 0.3, 0));
+  }
   return g;
 }
 
