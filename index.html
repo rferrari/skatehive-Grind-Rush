@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Skatehive Runner</title>
+    <meta name="theme-color" content="#87ceeb" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud">
+      <div id="score-panel">
+        <div id="score">0</div>
+        <div id="level">LVL 1</div>
+        <div id="coins">🛹 0</div>
+      </div>
+      <div id="grind-ticker" class="hidden">GRIND!</div>
+      <div id="balance" class="hidden">
+        <div id="balance-needle"></div>
+      </div>
+      <div id="trick-ticker" class="hidden"></div>
+      <div id="level-toast" class="hidden"></div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <h1>SKATEHIVE<br />RUNNER</h1>
+      <p class="hiscore">HIGH SCORE: <span id="menu-hiscore">0</span></p>
+      <p class="prompt">Press <b>SPACE</b> or tap to skate</p>
+      <p class="controls">← → move &nbsp;·&nbsp; ↑ ollie &nbsp;·&nbsp; ↓ crouch &nbsp;·&nbsp; land on rails to grind</p>
+      <p class="controls">in the air: ↑ again = kickflip &nbsp;·&nbsp; ← or → = heelflip &nbsp;·&nbsp; ←→ fast = 360 shuvit (works with swipes too)</p>
+      <p class="controls">on a rail: ← → to keep your balance — the longer the grind, the bigger the points</p>
+      <button id="install-btn" class="hidden">📲 INSTALL APP</button>
+      <p id="ios-hint" class="controls hidden">Install: tap <b>Share</b> → <b>Add to Home Screen</b></p>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <h1>BAILED!</h1>
+      <p class="final">SCORE: <span id="final-score">0</span></p>
+      <p class="hiscore">HIGH SCORE: <span id="go-hiscore">0</span></p>
+      <p id="new-record" class="hidden">★ NEW RECORD ★</p>
+      <p class="prompt">Press <b>SPACE</b> or tap to try again</p>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
