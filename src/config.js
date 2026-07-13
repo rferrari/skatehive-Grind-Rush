@@ -116,9 +116,30 @@ const LEVELS = [];
   }
 }
 
+// Selectable skater presets. Each recolors the procedural skater's body,
+// head, and legs independently (see meshes.buildSkater / player.applyPalette).
+const CHARACTERS = [
+  { name: 'CLASSIC', colors: { skin: 0xe0ac69, shirt: 0x2e86de, sleeve: 0x1b6ec2, pants: 0x2d3436, cap: 0xd63031, hair: 0x3a2a1a, shoe: 0xf5f0e6 } },
+  { name: 'MELLOW', colors: { skin: 0xc68642, shirt: 0x27ae60, sleeve: 0x1e8449, pants: 0x34495e, cap: 0xf39c12, hair: 0x141414, shoe: 0xecf0f1 } },
+  { name: 'VIBE', colors: { skin: 0xffcc99, shirt: 0x8e44ad, sleeve: 0x6c3483, pants: 0x2c3e50, cap: 0x1abc9c, hair: 0x2a1a0a, shoe: 0x2c3e50 } },
+  { name: 'GNARLY', colors: { skin: 0x8d5524, shirt: 0xe67e22, sleeve: 0xd35400, pants: 0x17202a, cap: 0xecf0f1, hair: 0x111111, shoe: 0x111111 } },
+];
+
+// Selectable boards — deck color (geometry is shared).
+const BOARDS = [
+  { name: 'WOOD', deck: 0x6c3f18 },
+  { name: 'FIRE', deck: 0xc0392b },
+  { name: 'AQUA', deck: 0x16a085 },
+  { name: 'GOLD', deck: 0xf1c40f },
+];
+
 export const CONFIG = Object.freeze({
   // Lanes (x positions). Player runs at z = 0, world scrolls toward +z.
   lanes: [-2, 0, 2],
+
+  // Cosmetics (character + board selection, saved to localStorage).
+  characters: CHARACTERS,
+  boards: BOARDS,
   laneWidth: 2,
   laneChangeTime: 0.16,
 
@@ -139,6 +160,14 @@ export const CONFIG = Object.freeze({
   playerHeight: 1.8, // standing collider top
   slideHeight: 0.9, // sliding collider top
   playerDepth: 0.8, // z extent used for collision (already shrunk to feel fair)
+
+  // Verticality: kicker ramps launch you onto shipping-container tops for a
+  // second level of height you can roll along.
+  containerTop: 2.0, // ride height on top of a container
+  containerLength: 6, // z extent (long enough to ride)
+  kickerLaunch: 11, // upward velocity a kicker pops you with (clears containerTop)
+  landMargin: 0.35, // feet-below-top slack: within this you land, below it you hit the side
+  platformScoreRate: 30, // bonus points/second while riding a raised platform
 
   // Grinding
   railTop: 0.9,

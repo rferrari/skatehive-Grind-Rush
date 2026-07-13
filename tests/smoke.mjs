@@ -3,7 +3,7 @@ import * as meshes from '../src/meshes.js';
 import { ChunkManager } from '../src/chunks.js';
 import { CoinManager } from '../src/coins.js';
 import { Player } from '../src/player.js';
-import { checkCollisions } from '../src/collision.js';
+import { checkCollisions, queryFloor } from '../src/collision.js';
 
 import * as THREE from 'three';
 import { World } from '../src/world.js';
@@ -114,5 +114,57 @@ if (checkCollisions(p, [hole])?.kind !== 'hit') throw new Error('hole did not hi
 p.y = 1.2; p.airborne = true;
 if (checkCollisions(p, [hole])) throw new Error('hole hit airborne player');
 console.log('hole collision OK');
+
+// 7. Verticality: kicker launches a grounded player; ignored while airborne.
+const kicker = {
+  position: { x: 0, y: 0, z: 0 },
+  userData: { collider: { type: 'kicker', band: 'kicker', lane: 1, x: 0, top: 0.9, clearance: 0, halfDepth: 0.7, launch: CONFIG.kickerLaunch } },
+};
+p.reset();
+{
+  const ev = checkCollisions(p, [kicker]);
+  if (ev?.kind !== 'launch' || ev.power !== CONFIG.kickerLaunch)
+    throw new Error(`kicker did not launch grounded player: ${JSON.stringify(ev)}`);
+}
+p.y = 1.0; p.vy = 5; p.airborne = true;
+if (checkCollisions(p, [kicker])) throw new Error('kicker fired while airborne');
+console.log('kicker launch OK');
+
+// 8. Container: queryFloor supports a player above the top; land-on-top vs
+// side-hit; riding then rolling off the end falls back to the ground.
+const container = {
+  position: { x: 0, y: 0, z: 0 },
+  userData: { collider: { type: 'container', band: 'platform', lane: 1, x: 0, top: CONFIG.containerTop, clearance: 0, halfDepth: CONFIG.containerLength / 2 } },
+};
+p.reset();
+// Descending onto the top → floor is the container top, and it's not a hit.
+p.y = CONFIG.containerTop + 0.1; p.vy = -2; p.airborne = true;
+if (queryFloor(p, [container]) !== CONFIG.containerTop)
+  throw new Error('queryFloor did not report container top when overhead');
+if (checkCollisions(p, [container])) throw new Error('clearing the top counted as a hit');
+// Running into the side low (descending short) → hit.
+p.reset();
+if (checkCollisions(p, [container])?.kind !== 'hit')
+  throw new Error('grounded run into container side did not hit');
+// Rising off a kicker in front of the container → not a hit (pass up onto it).
+p.reset(); p.y = 0.8; p.vy = 6; p.airborne = true;
+if (checkCollisions(p, [container])) throw new Error('rising player bonked the container side');
+// A player at ground level (below the top) is beside it, not on it → floor 0.
+p.reset();
+if (queryFloor(p, [container]) !== 0)
+  throw new Error('grounded player below the top should not be supported by it');
+console.log('container platform OK');
+
+// 8b. Ride then roll off: standing on the top stays put; once the container
+// passes behind, the floor drops and the player steps off into a fall.
+p.reset();
+p.y = CONFIG.containerTop; p.vy = 0; p.airborne = false;
+p.update(1 / 60, queryFloor(p, [container]));
+if (p.airborne || Math.abs(p.y - CONFIG.containerTop) > 1e-6)
+  throw new Error('player did not stay planted on the container top');
+container.position.z = 20; // container now well behind the player
+p.update(1 / 60, queryFloor(p, [container]));
+if (!p.airborne) throw new Error('player did not step off the end of the container');
+console.log('container ride/step-off OK');
 
 console.log('ALL SMOKE TESTS PASSED');

@@ -17,6 +17,41 @@ const camera = new THREE.PerspectiveCamera(
 
 const game = new Game(scene, camera);
 
+// ---- Character + board selector (menu screen) ----
+// Swatch buttons that recolor the live skater and persist the choice. The
+// skater is on-screen behind the menu, so picks preview instantly.
+const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
+
+function buildSwatches(containerId, items, colorOf, getActive, onPick) {
+  const wrap = document.getElementById(containerId);
+  const buttons = items.map((item, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'swatch';
+    btn.style.background = hex(colorOf(item));
+    btn.title = item.name;
+    btn.addEventListener('click', () => {
+      onPick(i);
+      refresh();
+    });
+    wrap.appendChild(btn);
+    return btn;
+  });
+  // Swallow touch on the selector so a tap doesn't also start the run.
+  for (const type of ['touchstart', 'touchend']) {
+    wrap.addEventListener(type, (e) => e.stopPropagation());
+  }
+  function refresh() {
+    const active = getActive();
+    buttons.forEach((b, i) => b.classList.toggle('active', i === active));
+  }
+  refresh();
+}
+
+buildSwatches('char-options', CONFIG.characters, (c) => c.colors.shirt,
+  () => game.charIndex, (i) => game.selectCharacter(i));
+buildSwatches('board-options', CONFIG.boards, (b) => b.deck,
+  () => game.boardIndex, (i) => game.selectBoard(i));
+
 // ---- PWA install button (mobile menu screen) ----
 // Chrome/Android fires beforeinstallprompt when the app is installable; we
 // stash the event and replay it from our own button. iOS Safari never fires
