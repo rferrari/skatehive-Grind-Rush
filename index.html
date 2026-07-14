@@ -15,8 +15,9 @@
       <div id="score-panel">
         <div id="score">0</div>
         <div id="level">LVL 1</div>
-        <div id="coins">🛹 0</div>
+        <div id="coins">⚙️ 0</div>
       </div>
+      <div id="effects"></div>
       <div id="grind-ticker" class="hidden">GRIND!</div>
       <div id="balance" class="hidden">
         <div id="balance-needle"></div>
@@ -32,46 +33,69 @@
       <div id="loading-track"><div id="loading-bar"></div></div>
     </div>
 
-    <!-- 2. Character + board selection (skater previewed live on the canvas) -->
-    <div id="select" class="overlay screen-split hidden">
-      <h2 class="screen-title">CHOOSE YOUR RIDE</h2>
+    <!-- Selection step 1: character (live turntable preview behind) -->
+    <div id="select-char" class="overlay screen-split hidden">
+      <h2 class="screen-title">CHOOSE YOUR SKATER</h2>
       <div class="select-bottom">
-        <div id="selector">
-          <div class="sel-row"><span class="sel-label">SKATER</span><div id="char-options" class="swatches"></div></div>
-          <div class="sel-row"><span class="sel-label">RIDE</span><div id="board-options" class="swatches"></div></div>
+        <div class="sel-row"><span class="sel-label">SKATER</span><div id="char-options" class="swatches"></div></div>
+        <button id="char-next" class="btn-primary">NEXT: BOARD →</button>
+      </div>
+    </div>
+
+    <!-- Selection step 2: board (camera drops to frame the deck) -->
+    <div id="select-board" class="overlay screen-split hidden">
+      <h2 class="screen-title">CHOOSE YOUR BOARD</h2>
+      <div class="select-bottom">
+        <div class="sel-row"><span class="sel-label">BOARD</span><div id="board-options" class="swatches"></div></div>
+        <p id="board-info" class="controls"></p>
+        <div class="menu-buttons">
+          <button id="board-back" class="btn-secondary">◂ SKATER</button>
+          <button id="board-store" class="btn-secondary">🛒 GET MORE IN THE STORE</button>
+          <button id="board-done" class="btn-primary">DONE ✓</button>
         </div>
-        <button id="select-go" class="btn-primary">SKATE →</button>
       </div>
     </div>
 
     <!-- Store: buy + equip parts across four slots -->
-    <div id="store" class="overlay screen-split hidden">
+    <div id="store" class="overlay hidden">
       <h2 class="screen-title">SKATE SHOP</h2>
-      <div class="select-bottom">
-        <p class="wallet">BANK: 🛹 <span id="store-balance">0</span> &nbsp;·&nbsp; POT: 🛹 <span id="store-pot">0</span> <span class="preview-tag">PREVIEW</span></p>
-        <div id="store-slots"></div>
+      <div class="store-header">
+        <p class="wallet">BANK: ⚙️ <span id="store-balance">0</span> &nbsp;·&nbsp; POT: ⚙️ <span id="store-pot">0</span> <span class="preview-tag">PREVIEW</span></p>
         <button id="store-back" class="btn-secondary">◂ BACK</button>
       </div>
+      <div id="store-slots"></div>
     </div>
 
-    <!-- 3. Start screen: how to play + tap to skate -->
+    <!-- 3. Start screen: clean title over the scrolling city -->
     <div id="menu" class="overlay hidden">
       <h1>SKATEHIVE<br />GRIND RUSH</h1>
       <p class="hiscore">HIGH SCORE: <span id="menu-hiscore">0</span></p>
-      <p id="menu-wallet" class="wallet">BANK: 🛹 0</p>
-      <p class="prompt">Press <b>SPACE</b> or tap to skate</p>
+      <p id="menu-wallet" class="wallet">BANK: ⚙️ 0</p>
+      <div class="menu-buttons">
+        <button id="menu-free" class="btn-primary">🛹 FREE SKATE</button>
+        <button id="menu-ranked" class="btn-primary btn-ranked">🏆 RANKED RUN</button>
+      </div>
+      <div class="menu-buttons">
+        <button id="menu-store" class="btn-secondary">🛒 STORE</button>
+        <button id="menu-change" class="btn-secondary">◂ CHANGE SKATER</button>
+        <button id="menu-howto" class="btn-secondary">❓ HOW TO PLAY</button>
+      </div>
+      <p class="prompt">or press <b>SPACE</b> / tap to skate</p>
+      <button id="install-btn" class="hidden">📲 INSTALL APP</button>
+      <p id="ios-hint" class="controls hidden">Install: tap <b>Share</b> → <b>Add to Home Screen</b></p>
+    </div>
+
+    <!-- How to play -->
+    <div id="howto" class="overlay hidden">
+      <h2 class="screen-title">HOW TO PLAY</h2>
       <p class="controls">← → move &nbsp;·&nbsp; ↑ ollie &nbsp;·&nbsp; ↓ crouch &nbsp;·&nbsp; land on rails to grind</p>
       <p class="controls">in the air: ↑ again = kickflip &nbsp;·&nbsp; ← or → = heelflip &nbsp;·&nbsp; ←→ fast = 360 shuvit (works with swipes too)</p>
       <p class="controls">kick off a ramp onto a shipping container to ride up high</p>
       <p class="controls">hoverboards: futuristic tricks, magnet grinds, and hold ↑ (or touch) to glide</p>
       <p class="controls">on a rail: ← → to keep your balance — the longer the grind, the bigger the points</p>
-      <div class="menu-buttons">
-        <button id="menu-ranked" class="btn-secondary">🏆 RANKED RUN</button>
-        <button id="menu-store" class="btn-secondary">🛒 STORE</button>
-        <button id="menu-change" class="btn-secondary">◂ CHANGE SKATER</button>
-      </div>
-      <button id="install-btn" class="hidden">📲 INSTALL APP</button>
-      <p id="ios-hint" class="controls hidden">Install: tap <b>Share</b> → <b>Add to Home Screen</b></p>
+      <p class="controls">grinding builds speed &nbsp;·&nbsp; powersliding scrubs it &nbsp;·&nbsp; grab ⚙️ bearings and powerups — dodge the red 🛢 can</p>
+      <p class="controls">🏆 ranked runs compete for the weekly pot with normalized gear — pure skill</p>
+      <button id="howto-back" class="btn-secondary">◂ BACK</button>
     </div>
 
     <div id="gameover" class="overlay hidden">
@@ -79,10 +103,11 @@
       <p class="final">SCORE: <span id="final-score">0</span></p>
       <p class="hiscore">HIGH SCORE: <span id="go-hiscore">0</span></p>
       <p id="new-record" class="hidden">★ NEW RECORD ★</p>
-      <p id="go-wallet" class="wallet">BANK: 🛹 0</p>
+      <p id="go-wallet" class="wallet">BANK: ⚙️ 0</p>
       <div id="go-leaderboard" class="leaderboard hidden"></div>
-      <button id="continue-btn" class="btn-primary hidden">▶ CONTINUE — 🛹 15</button>
+      <button id="continue-btn" class="btn-primary hidden">▶ CONTINUE — ⚙️ 15</button>
       <p class="prompt">Press <b>SPACE</b> or tap to try again</p>
+      <button id="giveup-btn" class="btn-secondary">◂ GIVE UP — BACK TO MENU</button>
     </div>
 
     <script type="module" src="/src/main.js"></script>

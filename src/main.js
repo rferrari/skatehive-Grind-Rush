@@ -57,9 +57,22 @@ function buildSwatches(containerId, items, colorOf, getActive, onPick, isLocked 
 
 buildSwatches('char-options', CONFIG.characters, (c) => c.colors.shirt,
   () => game.charIndex, (i) => game.selectCharacter(i));
-// Deck row: unowned decks are dimmed (buy them in the store); owned ones equip.
+
+// Board row: owned decks equip; locked ones show their price and point at the
+// store. The info line under the swatches explains whichever was tapped.
+function boardInfoFor(deck) {
+  if (game.ledger.owns('deck', deck.id)) {
+    const equipped = game.ledger.getEquipped('deck') === deck.id;
+    return equipped ? `${deck.name} — equipped ✓` : `${deck.name} — tap to equip`;
+  }
+  return `🔒 ${deck.name} — ⚙️ ${deck.cost} in the store`;
+}
 buildSwatches('board-options', CONFIG.boards, (b) => (b.ride === 'hover' ? b.glow : b.deck),
-  () => game.boardIndex, (i) => game.selectBoard(i),
+  () => game.boardIndex,
+  (i) => {
+    game.selectBoard(i);
+    game.hud.showBoardInfo(boardInfoFor(CONFIG.boards[i]));
+  },
   (b) => !game.ledger.owns('deck', b.id));
 
 // Keep taps on UI controls from also reaching the window touch handler (which
@@ -70,19 +83,39 @@ function stopTouch(el) {
   }
 }
 
-// Screen navigation: select → start, and start → back to selection.
-const selectGo = document.getElementById('select-go');
-selectGo.addEventListener('click', () => game.goToMenu());
-stopTouch(selectGo);
-
+// Screen navigation: menu → char select → board select → back to menu.
 const menuChange = document.getElementById('menu-change');
-menuChange.addEventListener('click', () => game.goToSelect());
+menuChange.addEventListener('click', () => game.goToSelectChar());
 stopTouch(menuChange);
+
+const charNext = document.getElementById('char-next');
+charNext.addEventListener('click', () => {
+  game.hud.showBoardInfo(boardInfoFor(CONFIG.boards[game.boardIndex]));
+  game.goToSelectBoard();
+});
+stopTouch(charNext);
+
+const boardBack = document.getElementById('board-back');
+boardBack.addEventListener('click', () => game.goToSelectChar());
+stopTouch(boardBack);
+
+const boardDone = document.getElementById('board-done');
+boardDone.addEventListener('click', () => game.goToMenu());
+stopTouch(boardDone);
+
+const boardStore = document.getElementById('board-store');
+boardStore.addEventListener('click', () => game.goToStore());
+stopTouch(boardStore);
 
 // Continue the ended run by spending banked coins.
 const continueBtn = document.getElementById('continue-btn');
 continueBtn.addEventListener('click', () => game.continueRun());
 stopTouch(continueBtn);
+
+// Give up: back to the start menu instead of retrying.
+const giveupBtn = document.getElementById('giveup-btn');
+giveupBtn.addEventListener('click', () => game.goToMenu());
+stopTouch(giveupBtn);
 
 // Store: build tiles once, wire buy/equip (game decides which), re-render.
 game.hud.buildStore(async (slot, id) => {
@@ -100,6 +133,18 @@ stopTouch(storeBack);
 const menuRanked = document.getElementById('menu-ranked');
 menuRanked.addEventListener('click', () => game.startRun('ranked'));
 stopTouch(menuRanked);
+
+const menuFree = document.getElementById('menu-free');
+menuFree.addEventListener('click', () => game.startRun('casual'));
+stopTouch(menuFree);
+
+const menuHowto = document.getElementById('menu-howto');
+menuHowto.addEventListener('click', () => game.goToHowto());
+stopTouch(menuHowto);
+
+const howtoBack = document.getElementById('howto-back');
+howtoBack.addEventListener('click', () => game.goToMenu());
+stopTouch(howtoBack);
 
 // ---- PWA install button (mobile menu screen) ----
 // Chrome/Android fires beforeinstallprompt when the app is installable; we

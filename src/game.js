@@ -5,6 +5,7 @@ import { LocalLedger } from './ledger.js';
 import { Player } from './player.js';
 import { World } from './world.js';
 import { CoinManager } from './coins.js';
+import { PowerupManager } from './powerups.js';
 import { ChunkManager } from './chunks.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
@@ -42,7 +43,8 @@ export class Game {
     this.world = new World(scene);
     this.player = new Player(scene);
     this.coins = new CoinManager(scene);
-    this.chunks = new ChunkManager(scene, this.coins);
+    this.powerups = new PowerupManager(scene);
+    this.chunks = new ChunkManager(scene, this.coins, this.powerups);
     this.input = new Input();
     this.hud = new Hud();
     this.ledger = new LocalLedger(); // coins, ownership, loadout, pot, leaderboard
@@ -58,6 +60,9 @@ export class Game {
     this.level = 1;
     this.lastAirDir = 0;
     this.lastAirDirTime = -1;
+    this.speedMod = 1; // eases toward slideDrag while sliding, grindBoost while grinding
+    this.effects = { magnet: 0, shield: 0, score2: 0, oil: 0 }; // seconds remaining
+    this.invuln = 0; // post-shield grace so the saved hit can't re-trigger
     this.camX = 0;
 
     // Character is a free cosmetic (kept as an index); the deck/wheels/trucks/
@@ -73,25 +78,46 @@ export class Game {
     this.updateCamera(0);
   }
 
-  // Loading → select. Frames the skater for the character/board preview.
-  goToSelect() {
+  // Selection step 1: character colors, on the turntable.
+  goToSelectChar() {
     this.player.reset();
+    this.player.setVisible(true);
     this.previewSpin = 0;
-    this.state = 'select';
+    this.state = 'selectChar';
     this.stateTime = 0;
-    this.hud.showSelect();
+    this.hud.showScreen('selectChar');
   }
 
-  // Select → start screen. Faces the skater forward again for the run camera.
+  // Selection step 2: the board — camera drops to frame the deck. Locked
+  // boards route the player to the store.
+  goToSelectBoard() {
+    this.player.setVisible(true);
+    this.state = 'selectBoard';
+    this.stateTime = 0;
+    this.hud.showScreen('selectBoard');
+  }
+
+  // Select / store / give-up → start screen: a clean title over the scrolling
+  // city, no skater. A bailed skater gets back up (board re-attached) first.
   goToMenu() {
+    if (this.player.bailing) this.player.reset();
     this.player.group.rotation.y = 0;
+    this.player.setVisible(false);
     this.state = 'menu';
     this.stateTime = 0;
     this.hud.showMenu(this.ledger.getBalance());
   }
 
+  // How-to-play: same clean background as the menu, info overlay on top.
+  goToHowto() {
+    this.state = 'howto';
+    this.stateTime = 0;
+    this.hud.showHowto();
+  }
+
   // Open the store (reuses the turntable preview to show the equipped skate).
   goToStore() {
+    this.player.setVisible(true);
     this.previewSpin = 0;
     this.state = 'store';
     this.stateTime = 0;
@@ -195,7 +221,9 @@ export class Game {
     // Loadout stats apply in casual; ranked normalizes them (fair pot board).
     this.player.stats = computeStats(this.ledger.getLoadout(), mode);
     this.player.reset();
+    this.player.setVisible(true);
     this.coins.reset();
+    this.powerups.reset();
     this.chunks.reset();
     this.score = 0;
     this.coinCount = 0;
@@ -203,6 +231,9 @@ export class Game {
     this.continuesUsed = 0;
     this.level = this.currentLevel();
     this.lastAirDir = 0;
+    this.speedMod = 1;
+    this.effects = { magnet: 0, shield: 0, score2: 0, oil: 0 };
+    this.invuln = 0;
     const theme = CONFIG.levels[this.level - 1];
     this.world.setTheme(theme);
     this.chunks.setBanned(theme.banned);
@@ -226,6 +257,9 @@ export class Game {
     this.player.reset(); // un-bails and reattaches the board
     this.chunks.reset(); // clear the field — open road on respawn
     this.coins.reset();
+    this.powerups.reset();
+    this.effects = { magnet: 0, shield: 0, score2: 0, oil: 0 };
+    this.invuln = 0;
     this.coinCount = 0; // this run's coins were already banked at the bail
     this.hud.hideOverlays();
     this.hud.update(this.score, 0, this.player, this.level);
@@ -265,15 +299,15 @@ export class Game {
         this.player.update(dt);
         this.loadingT += dt;
         this.hud.showLoading(Math.min(1, this.loadingT / LOADING_DURATION));
-        if (this.loadingT >= LOADING_DURATION) this.goToSelect();
+        if (this.loadingT >= LOADING_DURATION) this.goToMenu(); // straight to play
         break;
 
-      case 'select':
+      case 'selectChar':
+      case 'selectBoard':
         this.world.update(dt, 4);
         this.player.update(dt);
         this.previewSpin += dt * 0.7;
         this.player.group.rotation.y = this.previewSpin; // slow turntable preview
-        if (actions.includes('start')) this.goToMenu();
         break;
 
       case 'store':
@@ -284,9 +318,12 @@ export class Game {
         break;
 
       case 'menu':
-        this.world.update(dt, 5); // slow scroll behind the title
-        this.player.update(dt);
+        this.world.update(dt, 5); // slow scroll behind the title (no skater)
         if (actions.includes('start')) this.startRun('casual');
+        break;
+
+      case 'howto':
+        this.world.update(dt, 5); // keep the city rolling behind the info
         break;
 
       case 'playing':
@@ -322,7 +359,22 @@ export class Game {
   }
 
   updatePlaying(dt, actions) {
-    this.speed = this.currentSpeed;
+    // Tick down active powerup effects and the post-shield grace window.
+    for (const k in this.effects) this.effects[k] = Math.max(0, this.effects[k] - dt);
+    this.invuln = Math.max(0, this.invuln - dt);
+
+    // Momentum: powerslides scrub speed, grinds pump it up, and either eases
+    // back to normal pace afterwards — risk pays, safety costs. An oil slick
+    // drags you down no matter what.
+    let modTarget = this.player.sliding
+      ? CONFIG.slideDrag
+      : this.player.grinding
+        ? CONFIG.grindBoost
+        : 1;
+    if (this.effects.oil > 0) modTarget = Math.min(modTarget, CONFIG.oilDrag);
+    const ease = modTarget !== 1 ? CONFIG.speedModEase : CONFIG.speedRecoverEase;
+    this.speedMod += (modTarget - this.speedMod) * Math.min(1, ease * dt);
+    this.speed = this.currentSpeed * this.speedMod;
     this.distance += this.speed * dt;
 
     // Level up: retheme the world, flash the toast, bump the speed.
@@ -357,15 +409,22 @@ export class Game {
     this.player.update(dt, floorY, this.input.jumpHeld());
     this.world.update(dt, this.speed);
     this.chunks.update(dt, this.speed, this.distance);
-    const picked = this.coins.update(dt, this.speed, this.player);
+    const x2 = this.effects.score2 > 0 ? 2 : 1; // ⭐ double-score window
+    const picked = this.coins.update(dt, this.speed, this.player, this.effects.magnet > 0);
     if (picked) {
       this.coinCount += picked;
-      this.score += picked * CONFIG.coinValue;
+      this.score += picked * CONFIG.coinValue * x2;
+    }
+
+    // Powerup pickups start (or refresh) their effect timers.
+    for (const type of this.powerups.update(dt, this.speed, this.player)) {
+      this.effects[type] = CONFIG.powerups[type].dur;
+      this.hud.showToast(CONFIG.powerups[type].label);
     }
 
     // Player-generated events: landed tricks, combos, balance falls. Spinner
     // parts boost trick payouts (trickScoreMul).
-    const trickMul = this.player.stats.trickScoreMul;
+    const trickMul = this.player.stats.trickScoreMul * x2;
     for (const ev of this.player.popEvents()) {
       if (ev.type === 'trick') {
         const def = CONFIG.tricks[ev.name];
@@ -383,15 +442,23 @@ export class Game {
     }
 
     const event = checkCollisions(this.player, this.chunks.active);
-    if (event?.kind === 'hit') {
-      this.gameOver();
-      return;
+    if (event?.kind === 'hit' && this.invuln <= 0) {
+      // A shield eats one crash instead of ending the run; the grace window
+      // lets the saved player pass through the obstacle they just hit.
+      if (this.effects.shield > 0) {
+        this.effects.shield = 0;
+        this.invuln = 1.2;
+        this.hud.showToast('🛡 SHIELD SAVED YOU!');
+      } else {
+        this.gameOver();
+        return;
+      }
     }
     if (event?.kind === 'grind') this.player.enterGrind(event.mesh);
     else if (event?.kind === 'launch') this.player.launch(event.power);
 
-    // Deck scoreMul boosts distance, grind, and platform points.
-    const sm = this.player.stats.scoreMul;
+    // Deck scoreMul boosts distance, grind, and platform points (⭐ doubles).
+    const sm = this.player.stats.scoreMul * x2;
     this.score += CONFIG.distanceScoreRate * this.speed * dt * 0.1 * sm;
     // Grinds pay more the longer you hold the balance.
     if (this.player.grinding) {
@@ -403,15 +470,26 @@ export class Game {
     }
 
     this.hud.update(this.score, this.coinCount, this.player, this.level);
+    this.hud.showEffects(this.effects);
   }
 
   updateCamera(dt) {
     const cam = this.camera;
 
-    // Loading, selection & store use a close, forward-facing skater preview.
-    if (this.state === 'loading' || this.state === 'select' || this.state === 'store') {
-      cam.position.set(0, 1.5, 4.3);
-      cam.lookAt(0, 0.95, 0);
+    // Loading, selection & store use a close, forward-facing skater preview;
+    // the board step drops the camera low to frame the deck itself.
+    if (this.state === 'selectBoard') {
+      cam.position.set(0, 0.85, 2.9);
+      cam.lookAt(0, 0.3, 0);
+      if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
+        cam.fov = CONFIG.fovBase;
+        cam.updateProjectionMatrix();
+      }
+      return;
+    }
+    if (this.state === 'loading' || this.state === 'selectChar' || this.state === 'store') {
+      cam.position.set(0, 1.35, 3.8);
+      cam.lookAt(0, 0.82, 0);
       if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
         cam.fov = CONFIG.fovBase;
         cam.updateProjectionMatrix();

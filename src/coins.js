@@ -1,10 +1,13 @@
-// Coin pool: spawning rows/arcs, spin animation, and pickup checks.
+// Collectible bearings: pool, row/arc spawning, spin, and pickup checks.
 import { CONFIG } from './config.js';
-import { buildCoin } from './meshes.js';
+import { buildBearing } from './meshes.js';
 
 const PICKUP_RADIUS_X = 0.9;
 const PICKUP_RADIUS_Z = 0.8;
 const PICKUP_RADIUS_Y = 1.1;
+// With a magnet active, cans get vacuumed from any lane and any height.
+const MAGNET_RADIUS_X = 5;
+const MAGNET_RADIUS_Y = 3.5;
 
 export class CoinManager {
   constructor(scene) {
@@ -19,7 +22,7 @@ export class CoinManager {
     for (let i = 0; i < count; i++) {
       let coin = this.free.pop();
       if (!coin) {
-        coin = buildCoin();
+        coin = buildBearing();
         this.scene.add(coin);
       }
       // Arc rows trace a jump parabola so coins reward an ollie.
@@ -32,10 +35,13 @@ export class CoinManager {
   }
 
   // Move with the world, spin, check pickups. Returns number collected.
-  update(dt, speed, player) {
+  // With `magnet` active the pickup window widens to the whole street.
+  update(dt, speed, player, magnet = false) {
     this.spin += dt * 4;
     let collected = 0;
     const dz = speed * dt;
+    const rx = magnet ? MAGNET_RADIUS_X : PICKUP_RADIUS_X;
+    const ry = magnet ? MAGNET_RADIUS_Y : PICKUP_RADIUS_Y;
     for (let i = this.active.length - 1; i >= 0; i--) {
       const coin = this.active[i];
       coin.position.z += dz;
@@ -47,8 +53,8 @@ export class CoinManager {
       if (
         player &&
         Math.abs(coin.position.z) < PICKUP_RADIUS_Z &&
-        Math.abs(coin.position.x - player.x) < PICKUP_RADIUS_X &&
-        Math.abs(coin.position.y - (player.y + 0.7)) < PICKUP_RADIUS_Y
+        Math.abs(coin.position.x - player.x) < rx &&
+        Math.abs(coin.position.y - (player.y + 0.7)) < ry
       ) {
         collected++;
         this.releaseAt(i);

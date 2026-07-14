@@ -58,6 +58,13 @@ body {
   opacity: 0.9;
 }
 
+#effects {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffe14d;
+}
+
 #grind-ticker {
   margin-top: 6px;
   font-size: 20px;
@@ -286,6 +293,14 @@ body {
   background: #e8641b;
 }
 
+.btn-ranked {
+  background: #b8860b; /* gold — the pot run */
+}
+
+#howto .controls {
+  max-width: min(90vw, 640px);
+}
+
 .btn-secondary {
   font-size: 15px;
   background: rgba(0, 0, 0, 0.35);
@@ -337,7 +352,25 @@ body {
   font-size: 18px;
 }
 
-/* Store */
+/* Store — its content can outgrow the viewport, so this overlay scrolls
+   (touch-action re-enables vertical panning inside the no-touch page). */
+#store {
+  justify-content: flex-start;
+  gap: 12px;
+  padding-top: 4vh;
+  padding-bottom: 5vh;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.store-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 #store-slots {
   display: flex;
   flex-direction: column;

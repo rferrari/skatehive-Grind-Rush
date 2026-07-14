@@ -1,5 +1,6 @@
 import { CONFIG, computeStats, DEFAULT_LOADOUT } from '../src/config.js';
 import { LocalLedger } from '../src/ledger.js';
+import { PowerupManager } from '../src/powerups.js';
 import * as meshes from '../src/meshes.js';
 import { ChunkManager } from '../src/chunks.js';
 import { CoinManager } from '../src/coins.js';
@@ -286,6 +287,39 @@ function memStorage() {
   if (board[0].score !== 90 || board.some((e) => e.score === 999))
     throw new Error(`leaderboard wrong: ${JSON.stringify(board)}`);
   console.log('economy (ledger + stats + leaderboard) OK');
+}
+
+// 11. Powerups: spawn from the weighted table, picked up in the player's
+// lane, recycled behind the camera; magnet widens the can pickup window.
+{
+  const pm = new PowerupManager(scene);
+  pm.spawn(1, -5);
+  if (pm.active.length !== 1) throw new Error('powerup did not spawn');
+  const type = pm.active[0].type;
+  if (!(type in CONFIG.powerups)) throw new Error(`unknown powerup type ${type}`);
+  // Drive it toward the player at lane 1 (x=0): should be collected near z=0.
+  p.reset();
+  let got = [];
+  for (let i = 0; i < 120 && !got.length; i++) got = pm.update(1 / 60, 12, p);
+  if (got[0] !== type) throw new Error('powerup not collected in lane');
+  if (pm.active.length !== 0) throw new Error('collected powerup still active');
+  // Recycle path: spawn in another lane and let it pass behind.
+  pm.spawn(0, -5);
+  for (let i = 0; i < 240; i++) pm.update(1 / 60, 12, p);
+  if (pm.active.length !== 0) throw new Error('missed powerup never recycled');
+
+  // Magnet: a can two lanes away is only collectible with magnet=true.
+  const cm = new CoinManager(scene);
+  cm.spawnRow(0, -3, 1); // lane 0 (x=-2), player at x=0
+  p.reset();
+  let picked = 0;
+  for (let i = 0; i < 60 && !picked; i++) picked = cm.update(1 / 60, 12, p, false);
+  if (picked) throw new Error('off-lane can collected without magnet');
+  cm.reset();
+  cm.spawnRow(0, -3, 1);
+  for (let i = 0; i < 60 && !picked; i++) picked = cm.update(1 / 60, 12, p, true);
+  if (!picked) throw new Error('magnet did not vacuum the off-lane can');
+  console.log('powerups + magnet OK');
 }
 
 console.log('ALL SMOKE TESTS PASSED');

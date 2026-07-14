@@ -30,6 +30,15 @@ const MATS = {
   rail: mat(0xb0b8bf),
   railPost: mat(0x7f8c8d),
   coin: mat(0xf1c40f, { emissive: 0x8a6d00 }),
+  // Collectible bearing + powerups
+  bearingSteel: mat(0xcfd6de, { emissive: 0x2a2f36 }),
+  bearingCore: mat(0xe8641b), // orange shield ring, like real bearings
+  canBlue: mat(0x1e7fe8, { emissive: 0x0a2f6b }),
+  canSilver: mat(0xd7dde3),
+  oilRed: mat(0xc0392b, { emissive: 0x4a0d0d }),
+  magnetGreen: mat(0x2ecc71, { emissive: 0x0d4a26 }),
+  shieldCyan: mat(0x2ee6ff, { emissive: 0x0d5a6b }),
+  starGold: mat(0xf1c40f, { emissive: 0x8a6d00 }),
   building: mat(0xa8b8c8),
   building2: mat(0xc8a8a0),
   building3: mat(0x9fb89a),
@@ -82,6 +91,12 @@ const GEO = {
   post: new THREE.CylinderGeometry(0.07, 0.07, 1, 8),
   railBar: new THREE.CylinderGeometry(0.06, 0.06, 1, 10),
   coin: new THREE.CylinderGeometry(0.35, 0.35, 0.09, 14),
+  can: new THREE.CylinderGeometry(0.2, 0.2, 0.52, 12),
+  canRim: new THREE.CylinderGeometry(0.21, 0.21, 0.05, 12),
+  bearing: new THREE.TorusGeometry(0.27, 0.085, 8, 18),
+  bearingHub: new THREE.CylinderGeometry(0.13, 0.13, 0.1, 10),
+  orb: new THREE.SphereGeometry(0.3, 12, 10),
+  star: new THREE.OctahedronGeometry(0.34),
   head: new THREE.SphereGeometry(0.22, 10, 8),
   crown: new THREE.SphereGeometry(0.8, 7, 5),
   lampHead: new THREE.SphereGeometry(0.16, 8, 6),
@@ -462,11 +477,62 @@ export function buildKicker() {
   return g;
 }
 
-export function buildCoin() {
-  const coin = new THREE.Mesh(GEO.coin, MATS.coin);
-  coin.rotation.x = Math.PI / 2; // face the camera, spin around world y
+// The collectible: a skateboard bearing — steel ring with an orange shield,
+// spinning in place like a coin.
+export function buildBearing() {
   const g = new THREE.Group();
-  g.add(coin);
+  const ring = new THREE.Mesh(GEO.bearing, MATS.bearingSteel);
+  const hub = new THREE.Mesh(GEO.bearingHub, MATS.bearingCore);
+  hub.rotation.x = Math.PI / 2; // hub axis through the ring
+  g.add(ring, hub);
+  return g;
+}
+
+// A soda/oil can (used by the oil-slick power-down).
+export function buildCan(bodyMat = MATS.canBlue) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(GEO.can, bodyMat);
+  const top = new THREE.Mesh(GEO.canRim, MATS.canSilver);
+  top.position.y = 0.26;
+  const bottom = new THREE.Mesh(GEO.canRim, MATS.canSilver);
+  bottom.position.y = -0.26;
+  const tab = box(MATS.canSilver, 0.08, 0.02, 0.12, 0, 0.3, 0);
+  g.add(body, top, bottom, tab);
+  return g;
+}
+
+// Powerup pickups — distinct silhouettes per effect. Unknown types fall back
+// to the magnet so pool code can't crash on bad data.
+export function buildPowerup(type) {
+  const g = new THREE.Group();
+  switch (type) {
+    case 'shield': {
+      const orb = new THREE.Mesh(GEO.orb, MATS.shieldCyan);
+      g.add(orb);
+      break;
+    }
+    case 'score2': {
+      const star = new THREE.Mesh(GEO.star, MATS.starGold);
+      star.rotation.z = Math.PI / 4;
+      g.add(star);
+      break;
+    }
+    case 'oil': {
+      // The power-DOWN: a sketchy red can — learn to dodge it.
+      g.add(buildCan(MATS.oilRed));
+      break;
+    }
+    default: {
+      // magnet: green horseshoe
+      g.add(
+        box(MATS.magnetGreen, 0.12, 0.4, 0.12, -0.14, -0.05, 0),
+        box(MATS.magnetGreen, 0.12, 0.4, 0.12, 0.14, -0.05, 0),
+        box(MATS.magnetGreen, 0.4, 0.14, 0.12, 0, 0.2, 0),
+        box(MATS.canSilver, 0.12, 0.08, 0.13, -0.14, -0.29, 0),
+        box(MATS.canSilver, 0.12, 0.08, 0.13, 0.14, -0.29, 0)
+      );
+    }
+  }
   return g;
 }
 

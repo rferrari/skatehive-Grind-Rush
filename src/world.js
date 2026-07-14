@@ -16,11 +16,19 @@ const THEME_TAU = 1.4; // seconds; smaller = faster theme fade
 // (subway walls hug it, buildings sit back); centered items span the road.
 const SCENERY_SETS = {
   city: {
-    count: 24,
+    // Dense downtown: a near row of storefront blocks with trees/streetlights
+    // between them, plus a far row of taller towers for a skyline backdrop.
+    count: 40,
     build: (i) =>
-      i % 6 === 2 ? buildTree() : i % 6 === 5 ? buildStreetlight() : buildBuilding(i * 13 + 7),
-    edge: (i) => (i % 6 === 5 ? 6.2 : 9 + ((i * 5) % 6)),
-    faceRoad: (i) => i % 6 === 5,
+      i % 8 === 4 ? buildTree() : i % 8 === 7 ? buildStreetlight() : buildBuilding(i * 13 + 7),
+    edge: (i) => {
+      if (i % 8 === 7) return 6.2; // streetlights hug the sidewalk
+      if (i % 8 === 4) return 8.5; // trees between the buildings
+      return i % 3 === 0 ? 17 + ((i * 7) % 6) : 9 + ((i * 5) % 5);
+    },
+    // Far-row buildings scale up into towers so the skyline reads deep.
+    scale: (i) => (i % 3 === 0 && i % 8 !== 4 && i % 8 !== 7 ? 1.7 : 1),
+    faceRoad: (i) => i % 8 === 7,
   },
   park: {
     count: 26,
@@ -56,7 +64,9 @@ export class World {
     scene.add(this.hemi, this.sun);
 
     // Shared road materials so theme changes repaint both segments at once.
-    this.roadMat = new THREE.MeshLambertMaterial({ color: CONFIG.groundColor });
+    // The road multiplies its theme color with a baked vertex-color gradient
+    // (darker gutters + a faint oil line) so the asphalt reads real.
+    this.roadMat = new THREE.MeshLambertMaterial({ color: CONFIG.groundColor, vertexColors: true });
     this.walkMat = new THREE.MeshLambertMaterial({ color: CONFIG.sidewalkColor });
 
     // Two road segments leapfrog each other for an endless road.
@@ -82,6 +92,8 @@ export class World {
         if (!centered && set.faceRoad?.(i)) {
           obj.rotation.y = side === -1 ? Math.PI / 2 : -Math.PI / 2;
         }
+        const s = set.scale?.(i) ?? 1;
+        if (s !== 1) obj.scale.setScalar(s);
         obj.visible = false;
         scene.add(obj);
         pool.push(obj);
@@ -102,7 +114,21 @@ export class World {
 
   buildSegment() {
     const seg = new THREE.Group();
-    const road = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.1, SEGMENT_LENGTH), this.roadMat);
+    // Road with a baked shading gradient: brightness dips toward the gutters
+    // and along a faint oil line up the center — multiplied with the theme
+    // color, so it survives day/night transitions.
+    const roadGeo = new THREE.BoxGeometry(7.5, 0.1, SEGMENT_LENGTH, 14, 1, 1);
+    const pos = roadGeo.attributes.position;
+    const shade = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const edge = Math.abs(x) / 3.75;
+      let b = 1 - 0.32 * edge ** 1.6; // gutter grime
+      b -= 0.08 * Math.exp(-((x / 0.55) ** 2)); // center oil line
+      shade[i * 3] = shade[i * 3 + 1] = shade[i * 3 + 2] = b;
+    }
+    roadGeo.setAttribute('color', new THREE.BufferAttribute(shade, 3));
+    const road = new THREE.Mesh(roadGeo, this.roadMat);
     road.position.y = -0.05;
     seg.add(road);
 
@@ -110,6 +136,16 @@ export class World {
       const walk = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.24, SEGMENT_LENGTH), this.walkMat);
       walk.position.set(x, -0.02, 0);
       seg.add(walk);
+    }
+
+    // Soft contact shadow where the curb meets the street.
+    const curbShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false,
+    });
+    for (const x of [-3.5, 3.5]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.005, SEGMENT_LENGTH), curbShadowMat);
+      strip.position.set(x, 0.055, 0);
+      seg.add(strip);
     }
 
     // Dashed lane stripes at the two lane boundaries.

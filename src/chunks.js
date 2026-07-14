@@ -11,13 +11,17 @@ import { ObstaclePool } from './obstacles.js';
 const PATTERNS = [
   // ---- Tier 1: single obstacles, gentle intro ----
   { tier: 1, items: [{ type: 'cone', lane: 1, z: 8 }] },
-  { tier: 1, items: [{ type: 'cone', lane: 0, z: 4 }, { type: 'cone', lane: 2, z: 14 }] },
+  {
+    tier: 1,
+    items: [{ type: 'cone', lane: 0, z: 4 }, { type: 'cone', lane: 2, z: 14 }],
+    power: { lane: 1, z: 9 },
+  },
   {
     tier: 1,
     items: [{ type: 'barrier', lane: 1, z: 10 }],
     coins: [{ lane: 1, z: 10, count: 5, arc: true }],
   },
-  { tier: 1, items: [], coins: [{ lane: 0, z: 4, count: 6 }] },
+  { tier: 1, items: [], coins: [{ lane: 0, z: 4, count: 6 }], power: { lane: 2, z: 10 } },
   {
     tier: 1,
     items: [{ type: 'rail', lane: 2, z: 12 }],
@@ -79,6 +83,7 @@ const PATTERNS = [
       { type: 'bike', lane: 2, z: 9 },
     ],
     coins: [{ lane: 1, z: 7, count: 5 }],
+    power: { lane: 1, z: 16 },
   },
   {
     tier: 2,
@@ -142,6 +147,7 @@ const PATTERNS = [
       { type: 'crate', lane: 0, z: 12 },
       { type: 'cone', lane: 2, z: 18 },
     ],
+    power: { lane: 1, z: 12 },
   },
   {
     tier: 3,
@@ -242,6 +248,7 @@ const PATTERNS = [
       { type: 'bike', lane: 1, z: 17 },
     ],
     coins: [{ lane: 1, z: 8, count: 5 }],
+    power: { lane: 0, z: 16 },
   },
   {
     tier: 4,
@@ -264,9 +271,10 @@ const PATTERNS = [
 ];
 
 export class ChunkManager {
-  constructor(scene, coins) {
+  constructor(scene, coins, powerups = null) {
     this.pool = new ObstaclePool(scene);
     this.coins = coins;
+    this.powerups = powerups;
     this.active = []; // flat list of live obstacle meshes
     this.frontierZ = 0;
     this.lastPattern = -1;
@@ -315,6 +323,9 @@ export class ChunkManager {
     }
     for (const c of pattern.coins ?? []) {
       this.coins.spawnRow(c.lane, startZ - c.z, c.count, { arc: c.arc, y: c.y });
+    }
+    if (pattern.power && this.powerups) {
+      this.powerups.spawn(pattern.power.lane, startZ - pattern.power.z);
     }
     this.frontierZ -= CONFIG.chunkLength;
   }

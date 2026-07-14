@@ -17,6 +17,7 @@ const SLOT_STAT = {
 export class Hud {
   constructor() {
     this.el = {
+      hud: document.getElementById('hud'),
       score: document.getElementById('score'),
       coins: document.getElementById('coins'),
       level: document.getElementById('level'),
@@ -25,9 +26,13 @@ export class Hud {
       balanceNeedle: document.getElementById('balance-needle'),
       trick: document.getElementById('trick-ticker'),
       toast: document.getElementById('level-toast'),
+      effects: document.getElementById('effects'),
       loading: document.getElementById('loading'),
       loadingBar: document.getElementById('loading-bar'),
-      select: document.getElementById('select'),
+      selectChar: document.getElementById('select-char'),
+      selectBoard: document.getElementById('select-board'),
+      boardInfo: document.getElementById('board-info'),
+      howto: document.getElementById('howto'),
       menu: document.getElementById('menu'),
       menuHiscore: document.getElementById('menu-hiscore'),
       gameover: document.getElementById('gameover'),
@@ -46,9 +51,23 @@ export class Hud {
     this.lastScore = -1;
     this.lastCoins = -1;
     this.lastLevel = 0;
+    this.lastEffects = '';
     this.trickTimer = null;
     this.toastTimer = null;
     this.storeTiles = null; // built lazily by buildStore()
+  }
+
+  // Active powerup readout under the score (e.g. "🧲 4s · ⭐ 6s").
+  showEffects(effects) {
+    const icons = { magnet: '🧲', shield: '🛡', score2: '⭐', oil: '🛢' };
+    const text = Object.entries(effects)
+      .filter(([, t]) => t > 0)
+      .map(([k, t]) => `${icons[k]} ${Math.ceil(t)}s`)
+      .join(' · ');
+    if (text !== this.lastEffects) {
+      this.el.effects.textContent = text;
+      this.lastEffects = text;
+    }
   }
 
   loadHighScore() {
@@ -67,7 +86,7 @@ export class Hud {
       this.lastScore = s;
     }
     if (coins !== this.lastCoins) {
-      this.el.coins.textContent = `🛹 ${coins}`;
+      this.el.coins.textContent = `⚙️ ${coins}`;
       this.lastCoins = coins;
     }
     if (level !== this.lastLevel) {
@@ -104,24 +123,32 @@ export class Hud {
     this.toastTimer = setTimeout(() => this.el.toast.classList.add('hidden'), 2200);
   }
 
-  // Show exactly one pre-game screen (loading | select | store | menu | gameover | null).
+  // Show exactly one pre-game screen (or null for none). The in-game HUD
+  // (score/level/bearings) only shows when no screen is up — the menus sit
+  // over a clean scrolling world.
   showScreen(name) {
-    for (const key of ['loading', 'select', 'store', 'menu', 'gameover']) {
+    for (const key of ['loading', 'selectChar', 'selectBoard', 'store', 'howto', 'menu', 'gameover']) {
       this.el[key].classList.toggle('hidden', key !== name);
     }
+    this.el.hud.classList.toggle('hidden', name !== null);
+  }
+
+  showHowto() {
+    this.showScreen('howto');
+  }
+
+  // Ownership line under the board swatches ("equipped" / "🔒 price").
+  showBoardInfo(text) {
+    this.el.boardInfo.textContent = text;
   }
 
   showLoading(progress) {
     this.el.loadingBar.style.width = `${Math.round(progress * 100)}%`;
   }
 
-  showSelect() {
-    this.showScreen('select');
-  }
-
   showMenu(wallet = null) {
     this.el.menuHiscore.textContent = this.loadHighScore();
-    if (wallet !== null) this.el.menuWallet.textContent = `BANK: 🛹 ${wallet}`;
+    if (wallet !== null) this.el.menuWallet.textContent = `BANK: ⚙️ ${wallet}`;
     this.showScreen('menu');
   }
 
@@ -132,9 +159,9 @@ export class Hud {
     this.el.goHiscore.textContent = highScore;
     this.el.newRecord.classList.toggle('hidden', !isRecord);
     if (info) {
-      this.el.goWallet.textContent = `BANK: 🛹 ${info.wallet}`;
+      this.el.goWallet.textContent = `BANK: ⚙️ ${info.wallet}`;
       const affordable = info.wallet >= info.cost;
-      this.el.continueBtn.textContent = `▶ CONTINUE — 🛹 ${info.cost}`;
+      this.el.continueBtn.textContent = `▶ CONTINUE — ⚙️ ${info.cost}`;
       this.el.continueBtn.classList.toggle('hidden', !affordable);
 
       const ranked = info.mode === 'ranked';
@@ -144,7 +171,7 @@ export class Hud {
           .map((e, i) => `<div class="lb-row"><span>${['🥇', '🥈', '🥉'][i] ?? i + 1}</span><span>${e.score}</span></div>`)
           .join('');
         this.el.goLeaderboard.innerHTML =
-          `<div class="lb-title">WEEKLY POT 🛹 ${info.pot} <span class="preview-tag">PREVIEW</span></div>${rows || '<div class="lb-row">be the first!</div>'}`;
+          `<div class="lb-title">WEEKLY POT ⚙️ ${info.pot} <span class="preview-tag">PREVIEW</span></div>${rows || '<div class="lb-row">be the first!</div>'}`;
       }
     }
     this.showScreen('gameover');
@@ -197,7 +224,7 @@ export class Hud {
           ? 'EQUIPPED'
           : owned
             ? 'EQUIP'
-            : `🛹 ${part.cost}`;
+            : `⚙️ ${part.cost}`;
       });
     }
   }

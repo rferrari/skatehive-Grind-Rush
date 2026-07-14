@@ -5,6 +5,7 @@
 //
 // Gameplay events (trick landed, balance bail, ...) are queued on
 // this.events and drained by game.js via popEvents().
+import { Group, Mesh, CircleGeometry, MeshBasicMaterial } from 'three';
 import { CONFIG } from './config.js';
 import { buildSkater, DEFAULT_SKATER_PALETTE } from './meshes.js';
 
@@ -17,7 +18,13 @@ export class Player {
   constructor(scene) {
     const { group, parts, mats } = buildSkater();
     this.scene = scene;
-    this.group = group;
+    // The model renders scaled-down (compact view) inside an unscaled outer
+    // group; all pose/physics transforms target the outer group in world
+    // units, so gameplay tuning is unaffected by the visual scale.
+    this.model = group;
+    this.model.scale.setScalar(CONFIG.playerVisualScale);
+    this.group = new Group();
+    this.group.add(this.model);
     this.parts = parts;
     this.mats = mats; // per-part materials, recolored by applyPalette()
     this.looseBoard = null; // board mesh once detached on a bail
@@ -26,7 +33,15 @@ export class Player {
     // Loadout stat multipliers (game.js sets these per run from computeStats);
     // neutral by default so headless/test callers behave like base tuning.
     this.stats = { speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1, trickSpeedMul: 1, trickScoreMul: 1 };
-    scene.add(group);
+    // Soft blob shadow that grounds the skater; shrinks/fades with air height.
+    this.shadowMat = new MeshBasicMaterial({
+      color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false,
+    });
+    this.shadow = new Mesh(new CircleGeometry(0.5, 20), this.shadowMat);
+    this.shadow.rotation.x = -Math.PI / 2;
+    scene.add(this.shadow);
+    this.floorY = 0; // support height under the player (set each update)
+    scene.add(this.group);
     this.reset();
   }
 
@@ -49,6 +64,13 @@ export class Player {
       this.mats[key].color.setHex(p[key]);
       if (key === 'glow') this.mats.glow.emissive.setHex(p[key]);
     }
+  }
+
+  // Hide/show the whole skater (menu screens run the world without them).
+  setVisible(v) {
+    this.group.visible = v;
+    this.shadow.visible = v;
+    if (this.looseBoard) this.looseBoard.visible = v;
   }
 
   // Swap between skateboard (wheels) and hoverboard (glow + thruster pods).
@@ -89,10 +111,12 @@ export class Player {
     this.group.rotation.set(0, 0, 0);
     this.group.position.set(this.x, 0, 0);
     const { board, body, torso, arms } = this.parts;
-    // Re-attach the board if a previous bail detached it into the scene.
+    // Re-attach the board if a previous bail detached it into the scene
+    // (back inside the scaled model, so its local scale returns to 1).
     if (this.looseBoard) {
       this.scene.remove(this.looseBoard);
-      this.group.add(this.looseBoard);
+      this.looseBoard.scale.setScalar(1);
+      this.model.add(this.looseBoard);
       this.looseBoard = null;
       this.looseBoardSpeed = 0;
     }
@@ -192,13 +216,15 @@ export class Player {
   }
 
   // Wipe out: the board pops off and keeps rolling down the street (at the
-  // speed you were carrying) while the skater tumbles.
+  // speed you were carrying) while the skater tumbles. Detached from the
+  // scaled model into the scene, it keeps its rendered size explicitly.
   bail(speed = 0) {
     this.bailing = true;
     this.bailT = 0;
     const board = this.parts.board;
-    this.group.remove(board);
+    this.model.remove(board);
     this.scene.add(board);
+    board.scale.setScalar(CONFIG.playerVisualScale);
     board.position.set(this.x, this.y + 0.02, 0);
     board.rotation.set(0, 0, 0);
     this.looseBoard = board;
@@ -212,7 +238,9 @@ export class Player {
   // Defaults keep headless/unit callers simple.
   update(dt, floorY = 0, glideHeld = false) {
     this.time += dt;
+    this.floorY = floorY;
     this.gliding = this.isHover && this.airborne && glideHeld && this.vy < 0;
+    this.updateShadow();
 
     if (this.bailing) {
       this.bailT = Math.min(this.bailT + dt / 0.45, 1);
@@ -300,6 +328,16 @@ export class Player {
     }
 
     this.applyPose(dt);
+  }
+
+  // Blob shadow tracks the support surface under the player (road or
+  // container top) and shrinks/fades the higher they fly above it.
+  updateShadow() {
+    const h = Math.max(0, this.y - this.floorY);
+    const s = Math.max(0.35, 1 - h * 0.16);
+    this.shadow.position.set(this.x, this.floorY + 0.02, 0);
+    this.shadow.scale.setScalar(s);
+    this.shadowMat.opacity = 0.3 * Math.max(0.3, 1 - h * 0.2);
   }
 
   // --------------------------------------------------------------- poses ---

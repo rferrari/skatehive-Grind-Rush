@@ -58,21 +58,21 @@ const LOCATIONS = [
   {
     name: 'CITY',
     scenery: 'city',
-    ground: 0x8d8d94,
-    sidewalk: 0xb9b3a8,
+    ground: 0x74747c, // worn asphalt (vertex gradient adds gutter/oil shading)
+    sidewalk: 0xa8a298,
     banned: [], // obstacle types that never spawn here
   },
   {
     name: 'PARK',
     scenery: 'park',
-    ground: 0x97999e,
+    ground: 0x84868c, // smoother park tarmac
     sidewalk: 0x6fae4e, // grass edges
     banned: ['car'], // no traffic in a skatepark
   },
   {
     name: 'SUBWAY',
     scenery: 'subway',
-    ground: 0x5c5c64,
+    ground: 0x4e4e56, // dark tunnel concrete
     sidewalk: 0x8a8578, // platform concrete
     banned: ['car', 'bike'],
     fogScale: 0.72, // tighter fog sells the tunnel
@@ -133,6 +133,9 @@ const CHARACTERS = [
 // selector — hoverboard decks carry ride:'hover' + a glow color.
 //
 // Deck slot (formerly BOARDS): stats.scoreMul boosts distance/trick score.
+// Tiering is deliberate store-pull: WOOD is the free starter, the skate decks
+// are affordable with earned bearings, and the hoverboards are the premium
+// tier (planned: a second "gold" currency later).
 const DECKS = [
   { id: 'deck-wood', name: 'WOOD', ride: 'skate', deck: 0x6c3f18, cost: 0, stats: { scoreMul: 1.0 } },
   { id: 'deck-fire', name: 'FIRE', ride: 'skate', deck: 0xc0392b, cost: 120, stats: { scoreMul: 1.1 } },
@@ -223,8 +226,16 @@ export const CONFIG = Object.freeze({
   jumpVelocity: 9,
   gravity: 26,
   slideDuration: 0.65,
-  playerHeight: 1.8, // standing collider top
-  slideHeight: 0.9, // sliding collider top
+  // Momentum: powerslides scrub speed (sideways friction), grinds build it
+  // (pumping the rail) — risk pays, safety costs. Both ease in fast and
+  // recover gradually toward normal pace.
+  slideDrag: 0.78, // speed multiplier target while powersliding
+  grindBoost: 1.18, // speed multiplier target while grinding
+  speedModEase: 6, // per-second ease rate into a slide/grind modifier
+  speedRecoverEase: 1.6, // per-second ease rate back to full speed
+  playerVisualScale: 0.75, // render scale of the skater (compact view); physics unchanged
+  playerHeight: 1.4, // standing collider top (matches the scaled visual)
+  slideHeight: 0.72, // sliding collider top
   playerDepth: 0.8, // z extent used for collision (already shrunk to feel fair)
 
   // Verticality: kicker ramps launch you onto shipping-container tops for a
@@ -280,7 +291,17 @@ export const CONFIG = Object.freeze({
 
   // Scoring
   distanceScoreRate: 1.5, // points per unit travelled
-  coinValue: 10,
+  coinValue: 10, // per blue can
+
+  // Powerups (and one power-DOWN — the red oil can, dodge it). Weighted
+  // random pick when a pattern spawns one; durations in seconds.
+  powerups: {
+    magnet: { dur: 6, label: '🧲 CAN MAGNET!', weight: 3 },
+    shield: { dur: 10, label: '🛡 SHIELD!', weight: 3 },
+    score2: { dur: 7, label: '⭐ DOUBLE SCORE!', weight: 3 },
+    oil: { dur: 3.5, label: '🛢 OIL SLICK!', weight: 2 },
+  },
+  oilDrag: 0.68, // speed multiplier while slicked
 
   // Continues: coins bank across runs (localStorage wallet); a continue costs
   // coins and doubles in price with each use within the same run.
@@ -291,10 +312,11 @@ export const CONFIG = Object.freeze({
   // Overridable per-session with a ?level=N URL param (e.g. localhost:5173/?level=9).
   devStartLevel: 0,
 
-  // Camera
-  camHeight: 3.1,
-  camBack: 6.2,
-  camLookAhead: -9,
+  // Camera — pulled back/up a touch for a compact view: the skater fills less
+  // of the frame and more of the street and skyline reads.
+  camHeight: 3.4,
+  camBack: 7.0,
+  camLookAhead: -10,
   fovBase: 65,
   fovMax: 73,
 
@@ -302,7 +324,7 @@ export const CONFIG = Object.freeze({
   skyColor: 0x87ceeb,
   fogNear: 45,
   fogFar: 115,
-  groundColor: 0x8d8d94,
-  laneLineColor: 0xf2f2f2,
-  sidewalkColor: 0xb9b3a8,
+  groundColor: 0x74747c,
+  laneLineColor: 0xdadad2, // worn paint, not fresh white
+  sidewalkColor: 0xa8a298,
 });

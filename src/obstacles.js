@@ -18,16 +18,21 @@ export const BAND = {
   KICKER: 'kicker',
 };
 
+// Dodge obstacles render at this scale (compact view); their collider tops/
+// depths below are pre-scaled to match. Interactive platforms (rails,
+// containers, kickers) keep full size — their heights are physics-tuned.
+const DODGE_SCALE = 0.85;
+
 export const OBSTACLE_TYPES = {
-  cone: { band: BAND.LOW, top: 0.78, depth: 0.6, build: buildCone },
-  barrier: { band: BAND.LOW, top: 1.1, depth: 0.5, build: buildBarrier },
-  crate: { band: BAND.FULL, top: 2.2, depth: 1.0, build: buildCrate },
-  sign: { band: BAND.OVERHEAD, clearance: 1.35, depth: 0.4, build: buildSign },
+  cone: { band: BAND.LOW, top: 0.66, depth: 0.5, meshScale: DODGE_SCALE, build: buildCone },
+  barrier: { band: BAND.LOW, top: 0.94, depth: 0.43, meshScale: DODGE_SCALE, build: buildBarrier },
+  crate: { band: BAND.FULL, top: 1.87, depth: 0.85, meshScale: DODGE_SCALE, build: buildCrate },
+  sign: { band: BAND.OVERHEAD, clearance: 1.15, depth: 0.34, meshScale: DODGE_SCALE, build: buildSign },
   rail: { band: BAND.RAIL, top: CONFIG.railTop, depth: 14, build: () => buildRail(14) },
   // Marathon rail: much longer grind window for big balance scores.
   raillong: { band: BAND.RAIL, top: CONFIG.railTop, depth: 22, build: () => buildRail(22) },
-  car: { band: BAND.FULL, top: 1.6, depth: 3.6, build: buildCar },
-  bike: { band: BAND.LOW, top: 0.9, depth: 0.9, build: buildBike },
+  car: { band: BAND.FULL, top: 1.36, depth: 3.05, meshScale: DODGE_SCALE, build: buildCar },
+  bike: { band: BAND.LOW, top: 0.77, depth: 0.77, meshScale: DODGE_SCALE, build: buildBike },
   hole: { band: BAND.GAP, top: 0, depth: 1.5, build: buildHole },
   container: {
     band: BAND.PLATFORM,
@@ -50,6 +55,7 @@ export class ObstaclePool {
     let mesh = list && list.pop();
     if (!mesh) {
       mesh = def.build();
+      if (def.meshScale) mesh.scale.setScalar(def.meshScale);
       this.scene.add(mesh);
     }
     mesh.visible = true;
