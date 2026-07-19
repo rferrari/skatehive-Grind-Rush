@@ -21,12 +21,15 @@ export class Hud {
       score: document.getElementById('score'),
       coins: document.getElementById('coins'),
       level: document.getElementById('level'),
+      speed: document.getElementById('speed'),
       grind: document.getElementById('grind-ticker'),
       balance: document.getElementById('balance'),
       balanceNeedle: document.getElementById('balance-needle'),
       trick: document.getElementById('trick-ticker'),
       toast: document.getElementById('level-toast'),
       effects: document.getElementById('effects'),
+      boostTrack: document.getElementById('boost-track'),
+      boostFill: document.getElementById('boost-fill'),
       loading: document.getElementById('loading'),
       loadingBar: document.getElementById('loading-bar'),
       selectChar: document.getElementById('select-char'),
@@ -51,10 +54,23 @@ export class Hud {
     this.lastScore = -1;
     this.lastCoins = -1;
     this.lastLevel = 0;
+    this.lastSpeed = -1;
     this.lastEffects = '';
+    this.lastBoost = -1;
     this.trickTimer = null;
     this.toastTimer = null;
     this.storeTiles = null; // built lazily by buildStore()
+  }
+
+  // Nitro meter: fill width tracks the charge; the bar glows while burning.
+  showBoost(value, surging) {
+    const pct = Math.round(value * 50) * 2; // 2% steps to avoid style churn
+    if (pct !== this.lastBoost) {
+      this.el.boostFill.style.width = `${pct}%`;
+      this.lastBoost = pct;
+    }
+    this.el.boostTrack.classList.toggle('surge', surging);
+    this.el.boostTrack.classList.toggle('ready', !surging && value >= 0.34);
   }
 
   // Active powerup readout under the score (e.g. "🧲 4s · ⭐ 6s").
@@ -78,12 +94,18 @@ export class Hud {
     localStorage.setItem(HISCORE_KEY, String(score));
   }
 
-  // player is null on the game-over screen (hides the balance bar).
-  update(score, coins, player, level) {
+  // player is null on the game-over screen (hides the balance bar). `speed` is
+  // the current world speed (units/s) shown as a stylized MPH readout.
+  update(score, coins, player, level, speed = 0) {
     const s = Math.floor(score);
     if (s !== this.lastScore) {
       this.el.score.textContent = s;
       this.lastScore = s;
+    }
+    const mph = Math.round(speed * 3); // arcade units → punchy MPH-ish number
+    if (mph !== this.lastSpeed) {
+      this.el.speed.firstChild.textContent = `${mph} `;
+      this.lastSpeed = mph;
     }
     if (coins !== this.lastCoins) {
       this.el.coins.textContent = `⚙️ ${coins}`;

@@ -16,6 +16,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const game = new Game(scene, camera);
+window.__game = game; // dev/test handle (drives headless route + screenshot checks)
 
 // ---- Character + board selector (menu screen) ----
 // Swatch buttons that recolor the live skater and persist the choice. The
@@ -141,6 +142,15 @@ stopTouch(menuFree);
 const menuHowto = document.getElementById('menu-howto');
 menuHowto.addEventListener('click', () => game.goToHowto());
 stopTouch(menuHowto);
+
+// Mute toggle (persists; icon reflects state). Also unlocks audio on first tap.
+const muteBtn = document.getElementById('mute-btn');
+muteBtn.textContent = game.audio.muted ? '🔇' : '🔊';
+muteBtn.addEventListener('click', () => {
+  game.audio.resume();
+  muteBtn.textContent = game.audio.toggleMute() ? '🔇' : '🔊';
+});
+stopTouch(muteBtn);
 
 const howtoBack = document.getElementById('howto-back');
 howtoBack.addEventListener('click', () => game.goToMenu());

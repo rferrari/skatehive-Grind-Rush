@@ -5,7 +5,7 @@
 //
 // Gameplay events (trick landed, balance bail, ...) are queued on
 // this.events and drained by game.js via popEvents().
-import { Group, Mesh, CircleGeometry, MeshBasicMaterial } from 'three';
+import { Group, Mesh, CircleGeometry, ConeGeometry, MeshBasicMaterial } from 'three';
 import { CONFIG } from './config.js';
 import { buildSkater, DEFAULT_SKATER_PALETTE } from './meshes.js';
 
@@ -41,8 +41,30 @@ export class Player {
     this.shadow.rotation.x = -Math.PI / 2;
     scene.add(this.shadow);
     this.floorY = 0; // support height under the player (set each update)
+
+    // Flame trails off the rear wheels — ignite at high speed / while boosting.
+    this.fireIntensity = 0;
+    this.flames = [];
+    const flameGeo = new ConeGeometry(0.16, 0.9, 7);
+    for (const x of [-0.15, 0.15]) {
+      const mat = new MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9, depthWrite: false });
+      const flame = new Mesh(flameGeo, mat);
+      flame.rotation.x = Math.PI / 2; // apex trails backward (+z, toward camera)
+      flame.position.set(x, 0.12, 0.5);
+      flame.visible = false;
+      this.parts.board.add(flame);
+      this.flames.push(flame);
+    }
+
     scene.add(this.group);
     this.reset();
+  }
+
+  // Fire VFX intensity 0..1 (game drives this from speed + boost).
+  setFire(intensity) {
+    this.fireIntensity = intensity;
+    const on = intensity > 0.01;
+    for (const f of this.flames) f.visible = on;
   }
 
   // Apply the cosmetic side of an equipped loadout: wheel color/size and truck
@@ -128,6 +150,7 @@ export class Player {
     arms.rotation.set(0, 0, 0);
     arms.children[0].rotation.set(0, 0, 0);
     arms.children[1].rotation.set(0, 0, 0);
+    if (this.flames) this.setFire(0);
   }
 
   get topY() {
@@ -437,6 +460,18 @@ export class Player {
     const grounded = !this.airborne && !this.grinding;
     body.position.y = 0.29 + (grounded ? Math.sin(this.time * 9) * 0.02 : 0);
     legs.scale.y = 1; // legs length lives in body.scale.y
+
+    // Flame flicker: length rides intensity, color shifts orange→yellow hot.
+    if (this.fireIntensity > 0.01) {
+      for (let i = 0; i < this.flames.length; i++) {
+        const f = this.flames[i];
+        const flick = 0.75 + Math.sin(this.time * 40 + i * 2.1) * 0.25;
+        f.scale.set(0.7 + this.fireIntensity * 0.5, 1, 0.7 + this.fireIntensity * 0.5);
+        f.scale.y = (0.8 + this.fireIntensity * 2.2) * flick; // length back
+        f.material.color.setHex(this.fireIntensity > 0.75 ? 0xffd23d : 0xff7a1a);
+        f.material.opacity = 0.55 + this.fireIntensity * 0.4;
+      }
+    }
   }
 
   applyBailPose() {

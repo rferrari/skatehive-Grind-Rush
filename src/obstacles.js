@@ -6,6 +6,7 @@ import { CONFIG } from './config.js';
 import {
   buildCone, buildBarrier, buildCrate, buildSign, buildRail,
   buildCar, buildBike, buildHole, buildContainer, buildKicker,
+  buildRoofSlab, buildMegaRamp, buildRoofRamp, buildForkSign,
 } from './meshes.js';
 
 export const BAND = {
@@ -16,6 +17,7 @@ export const BAND = {
   GAP: 'gap',
   PLATFORM: 'platform',
   KICKER: 'kicker',
+  FORK: 'fork', // route-choice trigger line (underground mode)
 };
 
 // Dodge obstacles render at this scale (compact view); their collider tops/
@@ -41,6 +43,26 @@ export const OBSTACLE_TYPES = {
     build: () => buildContainer(CONFIG.containerLength, CONFIG.containerTop),
   },
   kicker: { band: BAND.KICKER, top: 0.9, depth: 2.2, launch: CONFIG.kickerLaunch, build: buildKicker },
+
+  // ---- Underground route pieces (full-width `wide` colliders) ----
+  roof: {
+    band: BAND.PLATFORM,
+    top: CONFIG.roofTop,
+    bottom: CONFIG.roofSlabBottom, // street passes underneath
+    depth: 24, // fills a chunk's playable span
+    wide: true,
+    build: () => buildRoofSlab(24, CONFIG.roofTop, CONFIG.roofSlabBottom),
+  },
+  megaramp: {
+    band: BAND.KICKER, top: 2.4, depth: 5, wide: true,
+    launch: CONFIG.megaRampLaunch, build: buildMegaRamp,
+  },
+  rooframp: {
+    band: BAND.KICKER, top: CONFIG.roofTop + 1.1, depth: 2.5, wide: true,
+    baseY: CONFIG.roofTop, launch: CONFIG.roofRampLaunch,
+    build: () => buildRoofRamp(CONFIG.roofTop),
+  },
+  fork: { band: BAND.FORK, top: 0, depth: 1, wide: true, build: buildForkSign },
 };
 
 export class ObstaclePool {
@@ -69,6 +91,9 @@ export class ObstaclePool {
       clearance: def.clearance ?? 0,
       halfDepth: def.depth / 2,
       launch: def.launch ?? 0,
+      wide: def.wide ?? false,
+      bottom: def.bottom ?? 0,
+      baseY: def.baseY ?? 0,
     };
     return mesh;
   }

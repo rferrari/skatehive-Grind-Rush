@@ -36,6 +36,11 @@ const MATS = {
   canBlue: mat(0x1e7fe8, { emissive: 0x0a2f6b }),
   canSilver: mat(0xd7dde3),
   oilRed: mat(0xc0392b, { emissive: 0x4a0d0d }),
+  // Underground: rooftop skyways + neon
+  slabConcrete: mat(0x84878c),
+  slabDark: mat(0x5f6266),
+  neonCyan: mat(0x2ee6ff, { emissive: 0x1fb8d4 }),
+  neonPink: mat(0xff3df2, { emissive: 0xc428bd }),
   magnetGreen: mat(0x2ecc71, { emissive: 0x0d4a26 }),
   shieldCyan: mat(0x2ee6ff, { emissive: 0x0d5a6b }),
   starGold: mat(0xf1c40f, { emissive: 0x8a6d00 }),
@@ -474,6 +479,94 @@ export function buildKicker() {
   for (const x of [-w / 2, w / 2]) {
     g.add(box(MATS.rampSide, 0.06, lip * 0.6, len, x, lip * 0.3, 0));
   }
+  return g;
+}
+
+// ------------------------------------------------- underground: rooftops ---
+// Elevated skyway slab spanning all three lanes; the street passes beneath.
+// Neon edge strips sell the underground-night vibe.
+export function buildRoofSlab(length, top = 6, bottom = 4.6) {
+  const g = new THREE.Group();
+  const thick = top - bottom;
+  g.add(box(MATS.slabConcrete, 7.8, thick, length, 0, top - thick / 2, 0));
+  // Parapet lips + neon edge strips.
+  for (const x of [-3.75, 3.75]) {
+    g.add(
+      box(MATS.slabDark, 0.3, 0.35, length, x, top + 0.17, 0),
+      box(MATS.neonCyan, 0.12, 0.08, length * 0.96, x, top + 0.38, 0)
+    );
+  }
+  // Support pillars down to the street.
+  const posts = Math.max(2, Math.round(length / 8));
+  for (let i = 0; i < posts; i++) {
+    const z = -length / 2 + 1.5 + (i / Math.max(1, posts - 1)) * (length - 3);
+    for (const x of [-3.2, 3.2]) {
+      g.add(box(MATS.pillar, 0.7, bottom, 0.7, x, bottom / 2, z));
+    }
+  }
+  // A couple of rooftop AC boxes for silhouette.
+  g.add(
+    box(MATS.slabDark, 1.1, 0.7, 1.1, -2.2, top + 0.35, -length * 0.22),
+    box(MATS.slabDark, 0.9, 0.5, 0.9, 2.4, top + 0.25, length * 0.18)
+  );
+  return g;
+}
+
+// Street-level mega-ramp: a full-width glowing wedge that launches you up
+// onto the skyway. High lip faces the player (+z), like the kickers.
+export function buildMegaRamp() {
+  const g = new THREE.Group();
+  const w = 7.6;
+  const len = 5;
+  const lip = 2.4;
+  const face = box(MATS.ramp, w, 0.2, len * 1.35, 0, lip / 2, 0);
+  face.rotation.x = Math.atan2(lip, len);
+  g.add(
+    face,
+    box(MATS.rampSide, w, lip, 0.4, 0, lip / 2, len / 2 - 0.2),
+    box(MATS.neonPink, w * 0.98, 0.12, 0.12, 0, lip + 0.05, len / 2), // lip glow
+    box(MATS.neonPink, 0.14, 0.1, len * 1.3, -w / 2 + 0.1, lip / 2 + 0.12, 0),
+    box(MATS.neonPink, 0.14, 0.1, len * 1.3, w / 2 - 0.1, lip / 2 + 0.12, 0)
+  );
+  return g;
+}
+
+// Rooftop-edge ramp (sits ON the slab at roof height) — jump the gap to the
+// next skyway.
+export function buildRoofRamp(baseY = 6) {
+  const g = new THREE.Group();
+  const w = 7.6;
+  const len = 2.5;
+  const lip = 1.1;
+  const face = box(MATS.ramp, w, 0.14, len * 1.4, 0, baseY + lip / 2, 0);
+  face.rotation.x = Math.atan2(lip, len);
+  g.add(
+    face,
+    box(MATS.rampSide, w, lip, 0.25, 0, baseY + lip / 2, len / 2),
+    box(MATS.neonCyan, w * 0.98, 0.1, 0.1, 0, baseY + lip + 0.04, len / 2)
+  );
+  return g;
+}
+
+// Fork gantry: overhead sign marking a route choice — left glows cyan for
+// the rooftops, right stays plain for the street.
+export function buildForkSign() {
+  const g = new THREE.Group();
+  for (const x of [-4.2, 4.2]) {
+    g.add(box(MATS.signPost, 0.25, 5.2, 0.25, x, 2.6, 0));
+  }
+  g.add(box(MATS.signPost, 8.8, 0.3, 0.3, 0, 5.2, 0));
+  // Left panel: ROOFTOPS (cyan, with an up-arrow silhouette).
+  g.add(
+    box(MATS.neonCyan, 2.6, 1.1, 0.12, -2, 4.4, 0),
+    box(MATS.tunnelWall, 0.3, 0.6, 0.16, -2, 4.35, 0.02), // arrow stem
+    box(MATS.tunnelWall, 0.7, 0.18, 0.16, -2, 4.7, 0.02) // arrow head bar
+  );
+  // Right panel: STREET (plain).
+  g.add(
+    box(MATS.barrierWhite, 2.6, 1.1, 0.12, 2, 4.4, 0),
+    box(MATS.tunnelWall, 1.6, 0.16, 0.16, 2, 4.4, 0.02) // flat road bar
+  );
   return g;
 }
 

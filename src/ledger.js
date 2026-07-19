@@ -28,8 +28,9 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const LEADERBOARD_MAX = 20;
 
 export class LocalLedger {
-  constructor(storage = globalThis.localStorage) {
+  constructor(storage = globalThis.localStorage, { unlockAll = CONFIG.devUnlockAll } = {}) {
     this.s = storage;
+    this.unlockAll = unlockAll; // dev free-test mode: everything owned
     this.wallet = this._num(KEYS.wallet, 0);
     this.pot = this._num(KEYS.pot, 0);
     // Owned parts always include the free starter loadout.
@@ -86,7 +87,7 @@ export class LocalLedger {
 
   // ----------------------------------------------------------- inventory ---
   owns(slot, id) {
-    return this.owned.has(`${slot}:${id}`);
+    return this.unlockAll || this.owned.has(`${slot}:${id}`);
   }
 
   async buy(slot, id) {

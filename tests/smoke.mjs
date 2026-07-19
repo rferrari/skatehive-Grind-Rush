@@ -322,4 +322,61 @@ function memStorage() {
   console.log('powerups + magnet OK');
 }
 
+// 12. Underground: elevated slabs, roof-edge ramps, fork triggers, routes.
+{
+  const slab = {
+    position: { x: 0, y: 0, z: 0 },
+    userData: { collider: { type: 'roof', band: 'platform', lane: 1, x: 0, top: CONFIG.roofTop, bottom: CONFIG.roofSlabBottom, halfDepth: 12, wide: true, baseY: 0 } },
+  };
+  // Street player passes under the slab: no hit, no support.
+  p.reset();
+  if (checkCollisions(p, [slab])) throw new Error('street player hit the slab underside');
+  if (queryFloor(p, [slab]) !== 0) throw new Error('street player supported by slab from below');
+  // Rooftop player is supported on top.
+  p.y = CONFIG.roofTop; p.vy = 0; p.airborne = false;
+  if (queryFloor(p, [slab]) !== CONFIG.roofTop) throw new Error('rooftop player not supported');
+  // Falling short into the slab face (at face height) is a hit.
+  p.y = CONFIG.roofTop - 1; p.vy = -2; p.airborne = true;
+  if (checkCollisions(p, [slab])?.kind !== 'hit') throw new Error('slab face did not hit');
+  // Wide tolerance: works from the outer lane too.
+  p.reset(); p.x = CONFIG.lanes[0]; p.y = CONFIG.roofTop; p.airborne = false;
+  if (queryFloor(p, [slab]) !== CONFIG.roofTop) throw new Error('wide slab not supporting outer lane');
+
+  // Roof-edge ramp only fires at roof height (baseY gating).
+  const rooframp = {
+    position: { x: 0, y: 0, z: 0 },
+    userData: { collider: { type: 'rooframp', band: 'kicker', lane: 1, x: 0, top: 7, halfDepth: 1.25, wide: true, baseY: CONFIG.roofTop, launch: CONFIG.roofRampLaunch } },
+  };
+  p.reset(); // street level
+  if (checkCollisions(p, [rooframp])) throw new Error('roof ramp fired at street level');
+  p.y = CONFIG.roofTop; p.airborne = false;
+  const launch = checkCollisions(p, [rooframp]);
+  if (launch?.kind !== 'launch' || launch.power !== CONFIG.roofRampLaunch)
+    throw new Error('roof ramp did not fire at roof height');
+
+  // Fork trigger reports a fork.
+  const fork = {
+    position: { x: 0, y: 0, z: 0 },
+    userData: { collider: { type: 'fork', band: 'fork', lane: 1, x: 0, top: 0, halfDepth: 0.5, wide: true, baseY: 0 } },
+  };
+  p.reset();
+  if (checkCollisions(p, [fork])?.kind !== 'fork') throw new Error('fork trigger silent');
+
+  // Route system: forks appear on the street; chooseRoute('roof') spawns the
+  // mega-ramp entry followed by slabs, then reverts to street.
+  const cm = new ChunkManager(scene, new CoinManager(scene));
+  const seen = () => new Set(cm.active.map((m) => m.userData.collider.type));
+  for (let i = 0; i < 4000 && !seen().has('fork'); i++) cm.update(1 / 60, 30, 100);
+  if (!seen().has('fork')) throw new Error('no fork ever spawned on the street');
+  cm.chooseRoute('roof');
+  for (let i = 0; i < 4000 && !(seen().has('megaramp') && seen().has('roof')); i++) {
+    cm.update(1 / 60, 30, 100);
+  }
+  if (!seen().has('megaramp') || !seen().has('roof'))
+    throw new Error('roof route did not spawn entry ramp + slabs');
+  for (let i = 0; i < 6000 && cm.route !== 'street'; i++) cm.update(1 / 60, 30, 100);
+  if (cm.route !== 'street') throw new Error('route did not revert to street after the roof run');
+  console.log('underground route pieces OK');
+}
+
 console.log('ALL SMOKE TESTS PASSED');

@@ -248,6 +248,22 @@ export const CONFIG = Object.freeze({
   landMargin: 0.35, // feet-below-top slack: within this you land, below it you hit the side
   platformScoreRate: 30, // bonus points/second while riding a raised platform
 
+  // ---- Underground prototype: rooftop routes + boost ----
+  // Elevated skyway slabs you launch onto at forks; the street runs beneath.
+  roofTop: 6, // rooftop ride height
+  roofSlabBottom: 4.6, // slab underside — street players pass under freely
+  megaRampLaunch: 18.5, // street → rooftop launch velocity (apex ≈ 6.6)
+  roofRampLaunch: 10.5, // roof-edge ramp: gap jump clears at min speed, lands within the next slab at max
+  routeRoofChunks: 4, // how many chunks a rooftop route lasts
+  forkEvery: 5, // street chunks between route forks
+
+  // Boost (skate nitro): charged by tricks + grinding, burned in segments.
+  boostChargeTrick: 0.34, // meter per landed trick
+  boostChargeGrind: 0.1, // meter per second of grinding
+  boostCost: 0.34, // one burn
+  boostDuration: 2.2, // seconds of surge per burn
+  boostSpeedMul: 1.55, // speed multiplier while surging
+
   // Grinding
   railTop: 0.9,
   grindSnapWindow: 0.55, // vertical window around rail top that snaps into a grind
@@ -307,6 +323,10 @@ export const CONFIG = Object.freeze({
   // coins and doubles in price with each use within the same run.
   continueBaseCost: 15,
   continueCostGrowth: 2,
+
+  // Dev: every part free/unlocked for playtesting the skate lab. Flip to
+  // false to restore the coin economy (costs + ownership gating).
+  devUnlockAll: true,
 
   // Dev: start runs at this level (1-based) instead of level 1. 0 = off.
   // Overridable per-session with a ?level=N URL param (e.g. localhost:5173/?level=9).

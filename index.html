@@ -10,13 +10,18 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <button id="mute-btn" title="Mute / unmute">🔊</button>
 
     <div id="hud">
       <div id="score-panel">
         <div id="score">0</div>
-        <div id="level">LVL 1</div>
+        <div id="center-hud">
+          <div id="level">LVL 1</div>
+          <div id="speed">0 <span class="unit">MPH</span></div>
+        </div>
         <div id="coins">⚙️ 0</div>
       </div>
+      <div id="boost-track"><div id="boost-fill"></div></div>
       <div id="effects"></div>
       <div id="grind-ticker" class="hidden">GRIND!</div>
       <div id="balance" class="hidden">
@@ -94,6 +99,8 @@
       <p class="controls">hoverboards: futuristic tricks, magnet grinds, and hold ↑ (or touch) to glide</p>
       <p class="controls">on a rail: ← → to keep your balance — the longer the grind, the bigger the points</p>
       <p class="controls">grinding builds speed &nbsp;·&nbsp; powersliding scrubs it &nbsp;·&nbsp; grab ⚙️ bearings and powerups — dodge the red 🛢 can</p>
+      <p class="controls">tricks + grinds charge the 🔥 boost meter — burn it with SHIFT / B / two-finger tap</p>
+      <p class="controls">at a fork gantry, keep LEFT to take the rooftop route: mega-ramp up, jump the gaps, don't look down</p>
       <p class="controls">🏆 ranked runs compete for the weekly pot with normalized gear — pure skill</p>
       <button id="howto-back" class="btn-secondary">◂ BACK</button>
     </div>

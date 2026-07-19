@@ -9,6 +9,7 @@ import { PowerupManager } from './powerups.js';
 import { ChunkManager } from './chunks.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
+import { AudioManager } from './audio.js';
 import { checkCollisions, queryFloor } from './collision.js';
 
 const RESTART_LOCKOUT = 0.7; // seconds before game-over screen accepts input
@@ -47,6 +48,7 @@ export class Game {
     this.chunks = new ChunkManager(scene, this.coins, this.powerups);
     this.input = new Input();
     this.hud = new Hud();
+    this.audio = new AudioManager();
     this.ledger = new LocalLedger(); // coins, ownership, loadout, pot, leaderboard
 
     this.state = 'loading';
@@ -63,7 +65,13 @@ export class Game {
     this.speedMod = 1; // eases toward slideDrag while sliding, grindBoost while grinding
     this.effects = { magnet: 0, shield: 0, score2: 0, oil: 0 }; // seconds remaining
     this.invuln = 0; // post-shield grace so the saved hit can't re-trigger
+    this.boost = 0; // nitro meter 0..1, charged by tricks + grinds
+    this.boostT = 0; // seconds of active surge remaining
+    this.forkCooldown = 0; // debounce for fork trigger overlap
     this.camX = 0;
+    this.camY = CONFIG.camHeight; // smoothed height-follow (must be seeded: the
+    // loading/preview camera returns early, so an unset camY would go NaN and
+    // blank the screen on the first run-camera frame)
 
     // Character is a free cosmetic (kept as an index); the deck/wheels/trucks/
     // spinners loadout lives in the ledger.
@@ -217,6 +225,10 @@ export class Game {
   }
 
   startRun(mode = 'casual') {
+    // First run is a user gesture — unlock audio + start the music playlist.
+    this.audio.resume();
+    this.audio.playMusic();
+    this.prevAirborne = false;
     this.mode = mode;
     // Loadout stats apply in casual; ranked normalizes them (fair pot board).
     this.player.stats = computeStats(this.ledger.getLoadout(), mode);
@@ -234,6 +246,9 @@ export class Game {
     this.speedMod = 1;
     this.effects = { magnet: 0, shield: 0, score2: 0, oil: 0 };
     this.invuln = 0;
+    this.boost = 0;
+    this.boostT = 0;
+    this.forkCooldown = 0;
     const theme = CONFIG.levels[this.level - 1];
     this.world.setTheme(theme);
     this.chunks.setBanned(theme.banned);
@@ -269,6 +284,8 @@ export class Game {
 
   gameOver() {
     this.player.bail(this.speed);
+    this.audio.sfx('bail');
+    this.audio.update(0, { rolling: false, speedT: 0, grinding: false, balance: 0 }); // kill loops
     const finalScore = Math.floor(this.score);
     // Bank this run's coins; record ranked runs on the (local) leaderboard.
     this.ledger.earn(this.coinCount, 'run');
@@ -359,19 +376,22 @@ export class Game {
   }
 
   updatePlaying(dt, actions) {
-    // Tick down active powerup effects and the post-shield grace window.
+    // Tick down active powerup effects, shield grace, boost surge, fork debounce.
     for (const k in this.effects) this.effects[k] = Math.max(0, this.effects[k] - dt);
     this.invuln = Math.max(0, this.invuln - dt);
+    this.boostT = Math.max(0, this.boostT - dt);
+    this.forkCooldown = Math.max(0, this.forkCooldown - dt);
 
     // Momentum: powerslides scrub speed, grinds pump it up, and either eases
     // back to normal pace afterwards — risk pays, safety costs. An oil slick
-    // drags you down no matter what.
+    // drags you down; a burning boost overrides everything.
     let modTarget = this.player.sliding
       ? CONFIG.slideDrag
       : this.player.grinding
         ? CONFIG.grindBoost
         : 1;
     if (this.effects.oil > 0) modTarget = Math.min(modTarget, CONFIG.oilDrag);
+    if (this.boostT > 0) modTarget = CONFIG.boostSpeedMul;
     const ease = modTarget !== 1 ? CONFIG.speedModEase : CONFIG.speedRecoverEase;
     this.speedMod += (modTarget - this.speedMod) * Math.min(1, ease * dt);
     this.speed = this.currentSpeed * this.speedMod;
@@ -396,9 +416,20 @@ export class Game {
         // Second jump input while already in the air = kickflip (or hoverspin).
         if (this.player.airborne && !this.player.grinding) {
           this.player.tryTrick(this.trickFor('kickflip'));
+        } else if (!this.player.airborne) {
+          this.player.jump();
+          this.audio.sfx('ollie');
         } else this.player.jump();
       } else if (action === 'slide') {
         this.player.slide();
+      } else if (action === 'boost') {
+        // Burn a stored segment for a speed surge (skate nitro).
+        if (this.boostT <= 0 && this.boost >= CONFIG.boostCost) {
+          this.boost -= CONFIG.boostCost;
+          this.boostT = CONFIG.boostDuration;
+          this.audio.sfx('boost');
+          this.hud.showTrick('🔥 BOOST!');
+        }
       } else if (action in CONFIG.tricks) {
         this.player.tryTrick(this.trickFor(action)); // Z/X/C shortcuts still work
       }
@@ -409,11 +440,18 @@ export class Game {
     this.player.update(dt, floorY, this.input.jumpHeld());
     this.world.update(dt, this.speed);
     this.chunks.update(dt, this.speed, this.distance);
+    // Land detection: airborne → grounded this frame (roll/roof/container).
+    if (this.prevAirborne && !this.player.airborne && !this.player.grinding) {
+      this.audio.sfx('land');
+    }
+    this.prevAirborne = this.player.airborne;
+
     const x2 = this.effects.score2 > 0 ? 2 : 1; // ⭐ double-score window
     const picked = this.coins.update(dt, this.speed, this.player, this.effects.magnet > 0);
     if (picked) {
       this.coinCount += picked;
       this.score += picked * CONFIG.coinValue * x2;
+      this.audio.sfx('bearing');
     }
 
     // Powerup pickups start (or refresh) their effect timers.
@@ -430,6 +468,8 @@ export class Game {
         const def = CONFIG.tricks[ev.name];
         const pts = Math.round(def.score * trickMul);
         this.score += pts;
+        this.boost = Math.min(1, this.boost + CONFIG.boostChargeTrick); // tricks feed the nitro
+        this.audio.sfx('trick');
         this.hud.showTrick(`${def.label} +${pts}`);
       } else if (ev.type === 'trickIntoGrind') {
         const pts = Math.round(CONFIG.trickIntoGrindBonus * trickMul);
@@ -455,22 +495,50 @@ export class Game {
       }
     }
     if (event?.kind === 'grind') this.player.enterGrind(event.mesh);
-    else if (event?.kind === 'launch') this.player.launch(event.power);
+    else if (event?.kind === 'launch') {
+      this.player.launch(event.power);
+      this.audio.sfx('launch');
+    }
+    else if (event?.kind === 'fork' && this.forkCooldown <= 0) {
+      // Route choice: pass the gantry in the LEFT lane to take the rooftops.
+      this.forkCooldown = 2;
+      if (this.player.laneIndex === 0) {
+        this.chunks.chooseRoute('roof');
+        this.hud.showToast('⬆ ROOFTOP ROUTE');
+      } else {
+        this.hud.showToast('➡ STREET ROUTE');
+      }
+    }
 
     // Deck scoreMul boosts distance, grind, and platform points (⭐ doubles).
     const sm = this.player.stats.scoreMul * x2;
     this.score += CONFIG.distanceScoreRate * this.speed * dt * 0.1 * sm;
-    // Grinds pay more the longer you hold the balance.
+    // Grinds pay more the longer you hold the balance — and feed the nitro.
     if (this.player.grinding) {
       this.score +=
         (CONFIG.grindScoreRate + CONFIG.grindScoreRamp * this.player.grindTime) * dt * sm;
+      this.boost = Math.min(1, this.boost + CONFIG.boostChargeGrind * dt);
     } else if (!this.player.airborne && this.player.y > 0.5) {
       // Riding along a raised platform (container top) pays a steady bonus.
       this.score += CONFIG.platformScoreRate * dt * sm;
     }
 
-    this.hud.update(this.score, this.coinCount, this.player, this.level);
+    // Drive the continuous rolling + grind sound.
+    const speedT = Math.min(1, Math.max(0, (this.speed - CONFIG.baseSpeed) / (CONFIG.maxSpeed - CONFIG.baseSpeed)));
+
+    // Wheel fire: kicks in above ~70% speed, always full while boosting.
+    const fire = this.boostT > 0 ? 1 : Math.max(0, (speedT - 0.7) / 0.3);
+    this.player.setFire(fire);
+    this.audio.update(dt, {
+      rolling: !this.player.airborne && !this.player.grinding && !this.player.bailing,
+      speedT,
+      grinding: this.player.grinding,
+      balance: this.player.balance,
+    });
+
+    this.hud.update(this.score, this.coinCount, this.player, this.level, this.speed);
     this.hud.showEffects(this.effects);
+    this.hud.showBoost(this.boost, this.boostT > 0);
   }
 
   updateCamera(dt) {
@@ -499,18 +567,24 @@ export class Game {
 
     const targetX = this.player.x * 0.5;
     this.camX = dt ? this.camX + (targetX - this.camX) * Math.min(1, dt * 8) : targetX;
-    // Lift the camera and its look target with the player so a rider up on a
-    // container stays comfortably framed instead of climbing out of view.
-    const followY = this.player.y * 0.55;
-    cam.position.set(this.camX, CONFIG.camHeight + followY, CONFIG.camBack);
-    cam.lookAt(this.camX * 0.6, 1.2 + followY, CONFIG.camLookAhead);
+    // At altitude (containers, rooftops) the camera climbs above and drops
+    // further back, looking up near the skater's body — so a rooftop run feels
+    // high and open rather than flat and cramped. Smoothed so drops aren't jarring.
+    const y = this.player.y;
+    const camY = CONFIG.camHeight + y * 0.9;
+    this.camY = dt ? this.camY + (camY - this.camY) * Math.min(1, dt * 6) : camY;
+    cam.position.set(this.camX, this.camY, CONFIG.camBack + y * 0.28);
+    cam.lookAt(this.camX * 0.6, 1.2 + y * 0.85, CONFIG.camLookAhead);
 
     // FOV pushes out with speed for a sense of acceleration.
     const speedT =
       this.state === 'playing'
         ? (this.speed - CONFIG.baseSpeed) / (CONFIG.maxSpeed - CONFIG.baseSpeed)
         : 0;
-    const targetFov = CONFIG.fovBase + (CONFIG.fovMax - CONFIG.fovBase) * speedT;
+    const targetFov =
+      CONFIG.fovBase +
+      (CONFIG.fovMax - CONFIG.fovBase) * speedT +
+      (this.boostT > 0 ? 6 : 0); // extra kick while the nitro burns
     if (Math.abs(cam.fov - targetFov) > 0.05) {
       cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 3);
       cam.updateProjectionMatrix();

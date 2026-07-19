@@ -270,6 +270,29 @@ const PATTERNS = [
   },
 ];
 
+// ---- Underground rooftop route: a fixed chunk sequence entered at a fork.
+// Geometry is speed-checked: the mega-ramp (launch 18.5) reaches the first
+// slab across the chunk seam at any speed, and roof-edge ramps (launch 10.5)
+// clear the ~9-unit gap at min speed while landing inside the next 24-unit
+// slab at max speed. Missing anything drops you safely to the street.
+const ROOF_ENTRY = {
+  items: [{ type: 'megaramp', lane: 1, z: 22 }],
+};
+const ROOF_MID = {
+  items: [
+    { type: 'roof', lane: 1, z: 12 },
+    { type: 'rooframp', lane: 1, z: 22.5 },
+  ],
+  coins: [{ lane: 1, z: 8, count: 6, y: 6.8 }],
+};
+const ROOF_END = {
+  items: [{ type: 'roof', lane: 1, z: 12 }], // no exit ramp: roll off the end
+  coins: [{ lane: 1, z: 8, count: 6, y: 6.8 }],
+};
+const FORK_PATTERN = {
+  items: [{ type: 'fork', lane: 1, z: 10 }],
+};
+
 export class ChunkManager {
   constructor(scene, coins, powerups = null) {
     this.pool = new ObstaclePool(scene);
@@ -279,7 +302,21 @@ export class ChunkManager {
     this.frontierZ = 0;
     this.lastPattern = -1;
     this.banned = []; // obstacle types the current location never spawns
+    this.route = 'street';
+    this.roofLeft = 0; // roof chunks still to spawn
+    this.roofPhase = 0; // 0 = entry ramp, then slabs, last = drop-off
+    this.sinceFork = 0; // street chunks since the last fork sign
     this.reset();
+  }
+
+  // Called by the game when the player passes a fork sign having chosen the
+  // rooftop side. Future chunks switch to the roof sequence.
+  chooseRoute(route) {
+    if (route === 'roof') {
+      this.route = 'roof';
+      this.roofLeft = CONFIG.routeRoofChunks;
+      this.roofPhase = 0;
+    }
   }
 
   setBanned(types) {
@@ -289,6 +326,10 @@ export class ChunkManager {
   reset() {
     for (const mesh of this.active) this.pool.release(mesh);
     this.active.length = 0;
+    this.route = 'street';
+    this.roofLeft = 0;
+    this.roofPhase = 0;
+    this.sinceFork = 0;
     // First chunk spawns well ahead so the run starts on open road.
     this.frontierZ = -35;
     this.fill(0);
@@ -315,8 +356,27 @@ export class ChunkManager {
     return eligible[idx];
   }
 
+  // Roof-route sequencing: entry ramp → slabs with gap jumps → drop-off end.
+  nextRoofPattern() {
+    const pattern =
+      this.roofPhase === 0 ? ROOF_ENTRY : this.roofLeft === 1 ? ROOF_END : ROOF_MID;
+    this.roofPhase++;
+    this.roofLeft--;
+    if (this.roofLeft <= 0) this.route = 'street';
+    return pattern;
+  }
+
   spawnChunk(distance) {
-    const pattern = this.pickPattern(distance);
+    let pattern;
+    if (this.route === 'roof') {
+      pattern = this.nextRoofPattern();
+    } else if (this.sinceFork >= CONFIG.forkEvery) {
+      pattern = FORK_PATTERN;
+      this.sinceFork = 0;
+    } else {
+      pattern = this.pickPattern(distance);
+      this.sinceFork++;
+    }
     const startZ = this.frontierZ - CONFIG.chunkLeadIn;
     for (const item of pattern.items) {
       this.active.push(this.pool.acquire(item.type, item.lane, startZ - item.z));
