@@ -82,7 +82,7 @@ const LOCATIONS = [
   },
 ];
 
-const scaleHex = (hex, f) => {
+export const scaleHex = (hex, f) => {
   const ch = (shift) => Math.min(255, Math.round(((hex >> shift) & 255) * f));
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 };
@@ -126,73 +126,172 @@ const CHARACTERS = [
 ];
 
 // ---------------------------------------------------------------- parts ---
-// The store sells parts across four slots. Each part has a coin `cost`
-// (starter parts are free and owned by default) and `stats` multipliers that
-// apply in CASUAL play; RANKED normalizes every multiplier to 1 so the pot
-// leaderboard stays fair (see computeStats). `deck` doubles as the ride
-// selector — hoverboard decks carry ride:'hover' + a glow color.
-//
-// Deck slot (formerly BOARDS): stats.scoreMul boosts distance/trick score.
-// Tiering is deliberate store-pull: WOOD is the free starter, the skate decks
-// are affordable with earned bearings, and the hoverboards are the premium
-// tier (planned: a second "gold" currency later).
-const DECKS = [
+// The Skate Lab sells gear per RIDE TYPE — the top-level category. A
+// skateboard is mechanical (deck/wheels/trucks/spinners); a hoverboard is
+// electromagnetic (deck/thrusters/mag-locks/flux core) — no wheels to spin.
+// Slots map onto the same stat keys so gameplay code stays ride-agnostic.
+// `stats` apply in CASUAL play; RANKED normalizes to 1 (fair pot board).
+
+// Skate decks: scoreMul. WOOD free, others earnable with bearings.
+const SKATE_DECKS = [
   { id: 'deck-wood', name: 'WOOD', ride: 'skate', deck: 0x6c3f18, cost: 0, stats: { scoreMul: 1.0 } },
   { id: 'deck-fire', name: 'FIRE', ride: 'skate', deck: 0xc0392b, cost: 120, stats: { scoreMul: 1.1 } },
   { id: 'deck-aqua', name: 'AQUA', ride: 'skate', deck: 0x16a085, cost: 120, stats: { scoreMul: 1.1 } },
   { id: 'deck-gold', name: 'GOLD', ride: 'skate', deck: 0xf1c40f, cost: 300, stats: { scoreMul: 1.25 } },
+];
+
+// Hover decks: the premium tier (planned: a second "gold" currency later).
+const HOVER_DECKS = [
   { id: 'deck-neon', name: 'NEON', ride: 'hover', deck: 0x1c2733, glow: 0x2ee6ff, cost: 500, stats: { scoreMul: 1.15 } },
   { id: 'deck-plasma', name: 'PLASMA', ride: 'hover', deck: 0x2a1633, glow: 0xff3df2, cost: 500, stats: { scoreMul: 1.15 } },
   { id: 'deck-volt', name: 'VOLT', ride: 'hover', deck: 0x14290f, glow: 0x8aff3d, cost: 700, stats: { scoreMul: 1.2 } },
 ];
 
-// Wheels → speedMul (top speed / acceleration). cosmetic: color + radius.
+// Wheels → speedMul + the powerslide axis: slideBrakeMul (how hard a
+// powerslide scrubs speed — higher = stronger brake) and slideLenMul (how
+// long the slide holds). Many near-variants on purpose: each maps to a
+// future NFT part (plan: parts live on-chain per player, small stat/cosmetic
+// differences make a wide collectible catalog).
 const WHEELS = [
   { id: 'wheels-street', name: 'STREET', cost: 0, stats: { speedMul: 1.0 }, cosmetic: { color: 0xf5f0e6, radius: 0.09 } },
   { id: 'wheels-race', name: 'RACE', cost: 150, stats: { speedMul: 1.12 }, cosmetic: { color: 0x2d3436, radius: 0.085 } },
   { id: 'wheels-turbo', name: 'TURBO', cost: 400, stats: { speedMul: 1.25 }, cosmetic: { color: 0x2ee6ff, radius: 0.1 } },
+  { id: 'wheels-griptide', name: 'GRIPTIDE', cost: 200, stats: { speedMul: 1.05, slideBrakeMul: 1.3 }, cosmetic: { color: 0xe8641b, radius: 0.088 } },
+  { id: 'wheels-anchor', name: 'ANCHOR', cost: 250, stats: { slideBrakeMul: 1.45 }, cosmetic: { color: 0x8d0f0f, radius: 0.095 } },
+  { id: 'wheels-drifter', name: 'DRIFTER', cost: 200, stats: { speedMul: 1.05, slideLenMul: 1.35 }, cosmetic: { color: 0xf1c40f, radius: 0.09 } },
+  { id: 'wheels-longhaul', name: 'LONGHAUL', cost: 300, stats: { slideLenMul: 1.5, slideBrakeMul: 0.85 }, cosmetic: { color: 0x27ae60, radius: 0.098 } },
+  { id: 'wheels-ghost', name: 'GHOST', cost: 450, stats: { speedMul: 1.18, slideLenMul: 1.2 }, cosmetic: { color: 0xd7dde3, radius: 0.082 } },
 ];
 
-// Trucks → handlingMul (lane snappiness) + balanceMul (grind drift resist).
+// Trucks → handlingMul + balanceMul (grind drift resist).
 const TRUCKS = [
   { id: 'trucks-basic', name: 'BASIC', cost: 0, stats: { handlingMul: 1.0, balanceMul: 1.0 }, cosmetic: { color: 0x95a5a6 } },
   { id: 'trucks-pro', name: 'PRO', cost: 150, stats: { handlingMul: 1.15, balanceMul: 1.1 }, cosmetic: { color: 0xd4af37 } },
   { id: 'trucks-elite', name: 'ELITE', cost: 400, stats: { handlingMul: 1.3, balanceMul: 1.25 }, cosmetic: { color: 0xb0c4de } },
 ];
 
-// Spinners (bearings) → trickSpeedMul (<1 = spin finishes faster, easier to
-// land) + trickScoreMul. cosmetic: wheel accent color.
+// Spinners (bearings) → trickSpeedMul (<1 = faster spins) + trickScoreMul.
 const SPINNERS = [
   { id: 'spin-basic', name: 'BASIC', cost: 0, stats: { trickSpeedMul: 1.0, trickScoreMul: 1.0 }, cosmetic: { color: 0x40342a } },
   { id: 'spin-fast', name: 'FAST', cost: 150, stats: { trickSpeedMul: 0.85, trickScoreMul: 1.15 }, cosmetic: { color: 0xe67e22 } },
   { id: 'spin-hyper', name: 'HYPER', cost: 400, stats: { trickSpeedMul: 0.7, trickScoreMul: 1.35 }, cosmetic: { color: 0xff3df2 } },
 ];
 
-const PARTS = { deck: DECKS, wheels: WHEELS, trucks: TRUCKS, spinners: SPINNERS };
-export const PART_SLOTS = ['deck', 'wheels', 'trucks', 'spinners'];
+// Hover thrusters → speedMul. cosmetic recolors/resizes the exhaust jets.
+const THRUSTERS = [
+  { id: 'thr-ion', name: 'ION DRIVE', cost: 0, stats: { speedMul: 1.0 }, cosmetic: { color: 0x2ee6ff, size: 1 } },
+  { id: 'thr-pulse', name: 'PULSE JET', cost: 150, stats: { speedMul: 1.12 }, cosmetic: { color: 0xff3df2, size: 1.3 } },
+  { id: 'thr-plasma', name: 'PLASMA VECTOR', cost: 400, stats: { speedMul: 1.25 }, cosmetic: { color: 0x8aff3d, size: 1.6 } },
+];
 
-// Starter loadout — the free basic skate a new player owns.
+// Mag-locks → handlingMul + balanceMul (the magnet that grips rails).
+const MAGLOCKS = [
+  { id: 'mag-ferrite', name: 'FERRITE', cost: 0, stats: { handlingMul: 1.0, balanceMul: 1.0 }, cosmetic: { color: 0x95a5a6 } },
+  { id: 'mag-neo', name: 'NEODYM', cost: 150, stats: { handlingMul: 1.15, balanceMul: 1.1 }, cosmetic: { color: 0xd4af37 } },
+  { id: 'mag-quantum', name: 'QUANTUM LOCK', cost: 400, stats: { handlingMul: 1.3, balanceMul: 1.25 }, cosmetic: { color: 0x9db4ff } },
+];
+
+// Flux cores → trickSpeedMul + trickScoreMul (spin tech).
+const FLUXCORES = [
+  { id: 'flux-stock', name: 'STOCK CORE', cost: 0, stats: { trickSpeedMul: 1.0, trickScoreMul: 1.0 }, cosmetic: { color: 0x40342a } },
+  { id: 'flux-over', name: 'OVERDRIVE', cost: 150, stats: { trickSpeedMul: 0.85, trickScoreMul: 1.15 }, cosmetic: { color: 0xe67e22 } },
+  { id: 'flux-sing', name: 'SINGULARITY', cost: 400, stats: { trickSpeedMul: 0.7, trickScoreMul: 1.35 }, cosmetic: { color: 0xff3df2 } },
+];
+
+// Outfit overrides — SHIRT / PANTS / CAP painted over the character preset.
+// index 0 = keep the preset's own color. Free cosmetics (future NFT paints).
+const preset = { id: 'preset', name: 'PRESET', color: null };
+export const OUTFITS = {
+  shirt: [
+    preset,
+    { id: 'shirt-white', name: 'WHITE', color: 0xf2f2f2 },
+    { id: 'shirt-black', name: 'BLACK', color: 0x1d1f24 },
+    { id: 'shirt-red', name: 'RED', color: 0xc0392b },
+    { id: 'shirt-royal', name: 'ROYAL', color: 0x2e5fde },
+    { id: 'shirt-lime', name: 'LIME', color: 0x76c93d },
+    { id: 'shirt-grape', name: 'GRAPE', color: 0x8e44ad },
+  ],
+  pants: [
+    preset,
+    { id: 'pants-black', name: 'BLACK', color: 0x17181c },
+    { id: 'pants-denim', name: 'DENIM', color: 0x3a5a86 },
+    { id: 'pants-khaki', name: 'KHAKI', color: 0xa4906c },
+    { id: 'pants-white', name: 'WHITE', color: 0xe6e6e2 },
+    { id: 'pants-red', name: 'RED', color: 0x8d2318 },
+  ],
+  cap: [
+    preset,
+    { id: 'cap-black', name: 'BLACK', color: 0x17181c },
+    { id: 'cap-red', name: 'RED', color: 0xd63031 },
+    { id: 'cap-cyan', name: 'CYAN', color: 0x2ee6ff },
+    { id: 'cap-gold', name: 'GOLD', color: 0xf1c40f },
+    { id: 'cap-pink', name: 'PINK', color: 0xff3df2 },
+    { id: 'cap-forest', name: 'FOREST', color: 0x1e8449 },
+  ],
+  // Chest logo/brand — rendered to a CanvasTexture at runtime (no image
+  // files). Emoji glyphs or the SKATEHIVE wordmark; future sponsor NFTs.
+  brand: [
+    { id: 'brand-none', name: 'NONE', logo: null },
+    { id: 'brand-hive', name: 'HIVE', logo: '🐝' },
+    { id: 'brand-volt', name: 'VOLT', logo: '⚡' },
+    { id: 'brand-bones', name: 'BONES', logo: '💀' },
+    { id: 'brand-heat', name: 'HEAT', logo: '🔥' },
+    { id: 'brand-aloha', name: 'ALOHA', logo: '🤙' },
+    { id: 'brand-wordmark', name: 'SKATEHIVE', logo: 'SKATEHIVE' },
+  ],
+};
+export const OUTFIT_SLOTS = ['shirt', 'pants', 'cap', 'brand'];
+
+// Stance: goofy mirrors the skater and (true to skating) swaps which foot
+// leads — so kickflip and heelflip trade inputs.
+export const STANCES = ['regular', 'goofy'];
+
+// Skills: trick unlocks + style passives, bought in the Lab like gear.
+// KICKFLIP is the free starter skill; devUnlockAll opens everything.
+export const SKILLS = [
+  { id: 'skill-kickflip', name: 'KICKFLIP', desc: 'unlock flip tricks', cost: 0, unlocks: 'kickflip' },
+  { id: 'skill-heelflip', name: 'HEELFLIP', desc: 'unlock heel tricks', cost: 200, unlocks: 'heelflip' },
+  { id: 'skill-shuvit', name: '360 SHUVIT', desc: 'unlock the fast-combo shuvit', cost: 350, unlocks: 'shuvit' },
+  { id: 'skill-swag', name: 'SWAG', desc: '+10% trick payout (casual)', cost: 400, passive: 'swag' },
+];
+
+export const RIDES = ['skate', 'hover'];
+const PARTS = {
+  skate: { deck: SKATE_DECKS, wheels: WHEELS, trucks: TRUCKS, spinners: SPINNERS },
+  hover: { deck: HOVER_DECKS, thrusters: THRUSTERS, maglocks: MAGLOCKS, fluxcore: FLUXCORES },
+};
+export const RIDE_SLOTS = {
+  skate: ['deck', 'wheels', 'trucks', 'spinners'],
+  hover: ['deck', 'thrusters', 'maglocks', 'fluxcore'],
+};
+
+// Starter loadout: one free skate setup, plus a default hover setup for when
+// the ride type is switched.
 export const DEFAULT_LOADOUT = {
-  deck: 'deck-wood', wheels: 'wheels-street', trucks: 'trucks-basic', spinners: 'spin-basic',
+  ride: 'skate',
+  skate: { deck: 'deck-wood', wheels: 'wheels-street', trucks: 'trucks-basic', spinners: 'spin-basic' },
+  hover: { deck: 'deck-neon', thrusters: 'thr-ion', maglocks: 'mag-ferrite', fluxcore: 'flux-stock' },
 };
 
 // Neutral stat baseline; also exactly what RANKED mode uses.
 const BASE_STATS = {
   speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1, trickSpeedMul: 1, trickScoreMul: 1,
+  slideBrakeMul: 1, slideLenMul: 1,
 };
 
-export function partById(slot, id) {
-  return PARTS[slot].find((p) => p.id === id) ?? PARTS[slot][0];
+export function partById(ride, slot, id) {
+  const list = PARTS[ride][slot];
+  return list.find((p) => p.id === id) ?? list[0];
 }
 
-// Resolve an equipped-loadout (slot→id) into effective stat multipliers.
-// RANKED returns the neutral baseline (cosmetics still apply elsewhere), so
-// purchased upgrades never advantage the pot leaderboard.
+// Resolve the ACTIVE ride's loadout into effective stat multipliers.
+// RANKED returns the neutral baseline (cosmetics still apply elsewhere).
 export function computeStats(loadout, mode) {
   const stats = { ...BASE_STATS };
   if (mode === 'ranked') return stats;
-  for (const slot of PART_SLOTS) {
-    const part = partById(slot, loadout[slot]);
+  const ride = loadout.ride ?? 'skate';
+  for (const slot of RIDE_SLOTS[ride]) {
+    const part = partById(ride, slot, loadout[ride][slot]);
     for (const [k, v] of Object.entries(part.stats ?? {})) stats[k] = v;
   }
   return stats;
@@ -204,8 +303,11 @@ export const CONFIG = Object.freeze({
 
   // Cosmetics (character + board selection, saved to localStorage).
   characters: CHARACTERS,
-  boards: DECKS, // deck slot doubles as the ride/board picker on the select screen
-  parts: PARTS,
+  outfits: OUTFITS, // shirt/pants/cap/brand overrides painted over the preset
+  stances: STANCES,
+  skills: SKILLS,
+  boards: [...SKATE_DECKS, ...HOVER_DECKS], // flat list for the select screen
+  parts: PARTS, // per-ride catalogs (see RIDE_SLOTS)
 
   // Store economy: fraction of every purchase routed to the weekly pot.
   potCutPct: 0.2,
@@ -224,6 +326,9 @@ export const CONFIG = Object.freeze({
 
   // Player physics
   jumpVelocity: 9,
+  // Popping off a rail mid-grind, or ollieing from an elevated surface
+  // (container/rooftop — a "second level" jump), gets extra pop.
+  highJumpVelocity: 11.5,
   gravity: 26,
   slideDuration: 0.65,
   // Momentum: powerslides scrub speed (sideways friction), grinds build it
@@ -257,11 +362,14 @@ export const CONFIG = Object.freeze({
   routeRoofChunks: 4, // how many chunks a rooftop route lasts
   forkEvery: 5, // street chunks between route forks
 
-  // Boost (skate nitro): charged by tricks + grinding, burned in segments.
-  boostChargeTrick: 0.34, // meter per landed trick
-  boostChargeGrind: 0.1, // meter per second of grinding
-  boostCost: 0.34, // one burn
-  boostDuration: 2.2, // seconds of surge per burn
+  // Boost = energy drinks ⚡. The meter counts drinks (0..boostMax): grab
+  // drink cans on the road for +1, or earn sips from tricks and grinding.
+  // Burning one drink = one speed surge.
+  boostMax: 3, // drinks you can carry
+  boostChargeTrick: 0.34, // ~3 tricks brew one drink
+  boostChargeGrind: 0.1, // drink-per-second while grinding
+  boostCost: 1, // one drink per burn
+  boostDuration: 2.2, // seconds of surge per drink
   boostSpeedMul: 1.55, // speed multiplier while surging
 
   // Grinding
@@ -312,10 +420,11 @@ export const CONFIG = Object.freeze({
   // Powerups (and one power-DOWN — the red oil can, dodge it). Weighted
   // random pick when a pattern spawns one; durations in seconds.
   powerups: {
-    magnet: { dur: 6, label: '🧲 CAN MAGNET!', weight: 3 },
+    magnet: { dur: 6, label: '🧲 BEARING MAGNET!', weight: 3 },
     shield: { dur: 10, label: '🛡 SHIELD!', weight: 3 },
     score2: { dur: 7, label: '⭐ DOUBLE SCORE!', weight: 3 },
     oil: { dur: 3.5, label: '🛢 OIL SLICK!', weight: 2 },
+    drink: { dur: 0, label: '⚡ ENERGY DRINK +1', weight: 4 }, // instant: +1 boost charge
   },
   oilDrag: 0.68, // speed multiplier while slicked
 

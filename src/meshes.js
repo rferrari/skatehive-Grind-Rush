@@ -141,8 +141,11 @@ export function buildSkater(palette = {}) {
     skin: mat(p.skin), shirt: mat(p.shirt), sleeve: mat(p.sleeve), pants: mat(p.pants),
     cap: mat(p.cap), hair: mat(p.hair), shoe: mat(p.shoe), deck: mat(p.deck),
     glow: new THREE.MeshLambertMaterial({ color: p.glow, emissive: p.glow }),
-    // Per-instance so equipped wheel/truck parts can recolor them live.
+    // Per-instance so equipped parts can recolor them live: wheels/trucks on
+    // a skateboard; thruster jets + mag-lock pods on a hoverboard.
     wheel: mat(0xf5f0e6), truck: mat(0x95a5a6),
+    thruster: new THREE.MeshLambertMaterial({ color: 0x2ee6ff, emissive: 0x1fb8d4 }),
+    pod: mat(0x95a5a6),
   };
 
   const group = new THREE.Group();
@@ -181,12 +184,15 @@ export function buildSkater(palette = {}) {
   // Hover gear: glowing underside plate + twin thruster pods. Hidden on a
   // skateboard; the glow material recolors per selected hoverboard.
   const hoverGear = new THREE.Group();
+  const thrusterJets = [
+    box(M.thruster, 0.14, 0.05, 0.06, 0, 0.14, -0.46), // exhaust jets
+    box(M.thruster, 0.14, 0.05, 0.06, 0, 0.14, 0.46),
+  ];
   hoverGear.add(
     box(M.glow, 0.26, 0.04, 0.95, 0, 0.21, 0), // under-glow plate
-    box(MATS.truck, 0.2, 0.09, 0.24, 0, 0.17, -0.34), // pods
-    box(MATS.truck, 0.2, 0.09, 0.24, 0, 0.17, 0.34),
-    box(M.glow, 0.14, 0.05, 0.06, 0, 0.14, -0.46), // thruster exhausts
-    box(M.glow, 0.14, 0.05, 0.06, 0, 0.14, 0.46)
+    box(M.pod, 0.2, 0.09, 0.24, 0, 0.17, -0.34), // mag-lock pods
+    box(M.pod, 0.2, 0.09, 0.24, 0, 0.17, 0.34),
+    ...thrusterJets
   );
   hoverGear.visible = false;
   board.add(hoverGear);
@@ -220,6 +226,14 @@ export function buildSkater(palette = {}) {
     box(M.shirt, 0.36, 0.5, 0.22, 0, 0.25, 0),
     box(M.sleeve, 0.38, 0.12, 0.24, 0, 0.44, 0) // shoulder band
   );
+  // Back print: a small transparent plane on the shirt BACK (+z — the side
+  // the chase camera sees while riding). player.applyBrand() paints a
+  // CanvasTexture onto it.
+  M.logo = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), M.logo);
+  logo.position.set(0, 0.24, 0.115);
+  logo.visible = false;
+  torso.add(logo);
 
   const arms = new THREE.Group();
   arms.position.y = 0.45;
@@ -254,7 +268,7 @@ export function buildSkater(palette = {}) {
 
   return {
     group,
-    parts: { board, wheels, skateGear, hoverGear, body, legs, torso, arms, head },
+    parts: { board, wheels, skateGear, hoverGear, thrusterJets, logo, body, legs, torso, arms, head },
     mats: M,
   };
 }
@@ -613,6 +627,11 @@ export function buildPowerup(type) {
     case 'oil': {
       // The power-DOWN: a sketchy red can — learn to dodge it.
       g.add(buildCan(MATS.oilRed));
+      break;
+    }
+    case 'drink': {
+      // Blue energy drink: +1 boost charge.
+      g.add(buildCan(MATS.canBlue));
       break;
     }
     default: {

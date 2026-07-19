@@ -14,12 +14,12 @@
 //   • Phase 3  HiveLedger — aioha login links a Hive account; withdraw() cashes
 //     off-chain coins to on-chain tokens; a weekly job settles the pot to the
 //     top 3. connectHive()/withdraw() below mark those seams.
-import { CONFIG, PART_SLOTS, DEFAULT_LOADOUT, partById } from './config.js';
+import { CONFIG, RIDES, RIDE_SLOTS, DEFAULT_LOADOUT, partById } from './config.js';
 
 const KEYS = {
   wallet: 'skatehive-wallet', // reused from the pre-economy wallet
-  owned: 'skatehive-owned',
-  equipped: 'skatehive-equipped',
+  owned: 'skatehive-owned2', // v2: keys are ride:slot:id (v1 data is dropped)
+  equipped: 'skatehive-equipped2', // v2: { ride, skate:{...}, hover:{...} }
   pot: 'skatehive-pot',
   board: 'skatehive-leaderboard',
 };
@@ -33,15 +33,29 @@ export class LocalLedger {
     this.unlockAll = unlockAll; // dev free-test mode: everything owned
     this.wallet = this._num(KEYS.wallet, 0);
     this.pot = this._num(KEYS.pot, 0);
-    // Owned parts always include the free starter loadout.
-    this.owned = new Set([
-      ...Object.entries(DEFAULT_LOADOUT).map(([slot, id]) => `${slot}:${id}`),
-      ...this._json(KEYS.owned, []),
-    ]);
-    this.equipped = { ...DEFAULT_LOADOUT, ...this._json(KEYS.equipped, {}) };
+    // Owned parts always include the free starter items of BOTH ride types
+    // (keyed ride:slot:id).
+    const starters = [];
+    for (const ride of RIDES) {
+      for (const [slot, id] of Object.entries(DEFAULT_LOADOUT[ride])) {
+        starters.push(`${ride}:${slot}:${id}`);
+      }
+    }
+    this.owned = new Set([...starters, ...this._json(KEYS.owned, [])]);
+
+    const saved = this._json(KEYS.equipped, {});
+    this.equipped = {
+      ride: RIDES.includes(saved.ride) ? saved.ride : DEFAULT_LOADOUT.ride,
+      skate: { ...DEFAULT_LOADOUT.skate, ...(saved.skate ?? {}) },
+      hover: { ...DEFAULT_LOADOUT.hover, ...(saved.hover ?? {}) },
+    };
     // Drop any equipped part that isn't owned (e.g. catalog changed).
-    for (const slot of PART_SLOTS) {
-      if (!this.owns(slot, this.equipped[slot])) this.equipped[slot] = DEFAULT_LOADOUT[slot];
+    for (const ride of RIDES) {
+      for (const slot of RIDE_SLOTS[ride]) {
+        if (!this.owns(ride, slot, this.equipped[ride][slot])) {
+          this.equipped[ride][slot] = DEFAULT_LOADOUT[ride][slot];
+        }
+      }
     }
     this.board = this._json(KEYS.board, []);
   }
@@ -76,6 +90,13 @@ export class LocalLedger {
     return this.wallet;
   }
 
+  // Store-style charge for non-part purchases (skills): spend + pot cut.
+  async charge(amount, reason = '') {
+    const r = await this.spend(amount, reason);
+    if (r.ok) this._addPot(amount * CONFIG.potCutPct);
+    return r;
+  }
+
   // Plain spend (e.g. continues). Store purchases go through buy() so the pot
   // cut is applied there, not on every spend.
   async spend(amount, _reason = '') {
@@ -86,31 +107,45 @@ export class LocalLedger {
   }
 
   // ----------------------------------------------------------- inventory ---
-  owns(slot, id) {
-    return this.unlockAll || this.owned.has(`${slot}:${id}`);
+  owns(ride, slot, id) {
+    return this.unlockAll || this.owned.has(`${ride}:${slot}:${id}`);
   }
 
-  async buy(slot, id) {
-    const part = partById(slot, id);
-    if (this.owns(slot, id)) return { ok: false, reason: 'owned' };
+  async buy(ride, slot, id) {
+    const part = partById(ride, slot, id);
+    if (this.owns(ride, slot, id)) return { ok: false, reason: 'owned' };
     if (part.cost > this.wallet) return { ok: false, reason: 'poor' };
     await this.spend(part.cost, `buy ${id}`);
     this._addPot(part.cost * CONFIG.potCutPct);
-    this.owned.add(`${slot}:${id}`);
+    this.owned.add(`${ride}:${slot}:${id}`);
     this._save(KEYS.owned, [...this.owned]);
     return { ok: true, balance: this.wallet };
   }
 
   getLoadout() {
-    return { ...this.equipped };
+    return {
+      ride: this.equipped.ride,
+      skate: { ...this.equipped.skate },
+      hover: { ...this.equipped.hover },
+    };
   }
-  getEquipped(slot) {
-    return this.equipped[slot];
+  getRide() {
+    return this.equipped.ride;
+  }
+  getEquipped(ride, slot) {
+    return this.equipped[ride][slot];
   }
 
-  async equip(slot, id) {
-    if (!this.owns(slot, id)) return { ok: false };
-    this.equipped[slot] = id;
+  async setRide(ride) {
+    if (!RIDES.includes(ride)) return { ok: false };
+    this.equipped.ride = ride;
+    this._save(KEYS.equipped, this.equipped);
+    return { ok: true };
+  }
+
+  async equip(ride, slot, id) {
+    if (!this.owns(ride, slot, id)) return { ok: false };
+    this.equipped[ride][slot] = id;
     this._save(KEYS.equipped, this.equipped);
     return { ok: true };
   }

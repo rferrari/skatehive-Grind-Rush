@@ -70,6 +70,10 @@ export class CoinManager {
     this.active.splice(index, 1);
   }
 
+  setHidden(h) {
+    for (const coin of this.active) coin.visible = !h;
+  }
+
   reset() {
     while (this.active.length) this.releaseAt(this.active.length - 1);
   }

@@ -248,35 +248,56 @@ function memStorage() {
   const store = memStorage();
   const led = new LocalLedger(store, { unlockAll: false });
   if (led.getBalance() !== 0) throw new Error('fresh wallet not 0');
-  if (!led.owns('deck', 'deck-wood')) throw new Error('starter deck not owned');
-  if (led.owns('deck', 'deck-fire')) throw new Error('premium deck owned for free');
+  if (!led.owns('skate', 'deck', 'deck-wood')) throw new Error('starter deck not owned');
+  if (led.owns('skate', 'deck', 'deck-fire')) throw new Error('premium deck owned for free');
+  if (!led.owns('hover', 'thrusters', 'thr-ion')) throw new Error('starter hover thruster not owned');
 
   await led.earn(100);
-  let r = await led.buy('deck', 'deck-fire'); // costs 120
+  let r = await led.buy('skate', 'deck', 'deck-fire'); // costs 120
   if (r.ok || r.reason !== 'poor') throw new Error('bought deck-fire while too poor');
   await led.earn(50); // now 150
-  r = await led.buy('deck', 'deck-fire');
+  r = await led.buy('skate', 'deck', 'deck-fire');
   if (!r.ok || led.getBalance() !== 30) throw new Error(`buy math wrong: ${JSON.stringify(r)} bal ${led.getBalance()}`);
   if (Math.round(led.getPot()) !== Math.round(120 * CONFIG.potCutPct))
     throw new Error(`pot cut wrong: ${led.getPot()}`);
-  if (!led.owns('deck', 'deck-fire')) throw new Error('bought deck not owned');
-  if ((await led.buy('deck', 'deck-fire')).reason !== 'owned') throw new Error('re-bought owned deck');
-  await led.equip('deck', 'deck-fire');
-  if (led.getEquipped('deck') !== 'deck-fire') throw new Error('equip did not stick');
-  if ((await led.equip('wheels', 'wheels-turbo')).ok) throw new Error('equipped an unowned part');
+  if (!led.owns('skate', 'deck', 'deck-fire')) throw new Error('bought deck not owned');
+  if ((await led.buy('skate', 'deck', 'deck-fire')).reason !== 'owned') throw new Error('re-bought owned deck');
+  await led.equip('skate', 'deck', 'deck-fire');
+  if (led.getEquipped('skate', 'deck') !== 'deck-fire') throw new Error('equip did not stick');
+  if ((await led.equip('skate', 'wheels', 'wheels-turbo')).ok) throw new Error('equipped an unowned part');
+  await led.setRide('hover');
+  if (led.getRide() !== 'hover') throw new Error('setRide did not stick');
+  await led.setRide('skate');
 
   // Persistence: a fresh ledger over the same storage restores state.
   const led2 = new LocalLedger(store, { unlockAll: false });
-  if (led2.getBalance() !== 30 || !led2.owns('deck', 'deck-fire') || led2.getEquipped('deck') !== 'deck-fire')
+  if (led2.getBalance() !== 30 || !led2.owns('skate', 'deck', 'deck-fire') || led2.getEquipped('skate', 'deck') !== 'deck-fire')
     throw new Error('ledger did not persist');
   console.log('ledger persistence OK');
 
-  // computeStats: ranked normalizes to 1; casual reflects equipped parts.
-  const ranked = computeStats({ ...DEFAULT_LOADOUT, deck: 'deck-fire' }, 'ranked');
+  // computeStats: ranked normalizes to 1; casual reflects the ACTIVE ride's
+  // equipped parts (including the new powerslide stats).
+  const loadout = {
+    ride: 'skate',
+    skate: { ...DEFAULT_LOADOUT.skate, deck: 'deck-fire', wheels: 'wheels-turbo' },
+    hover: { ...DEFAULT_LOADOUT.hover },
+  };
+  const ranked = computeStats(loadout, 'ranked');
   if (Object.values(ranked).some((v) => v !== 1)) throw new Error('ranked stats not normalized');
-  const casual = computeStats({ ...DEFAULT_LOADOUT, deck: 'deck-fire', wheels: 'wheels-turbo' }, 'casual');
+  const casual = computeStats(loadout, 'casual');
   if (casual.scoreMul !== 1.1 || casual.speedMul !== 1.25)
     throw new Error(`casual stats wrong: ${JSON.stringify(casual)}`);
+  const slidey = computeStats(
+    { ...loadout, skate: { ...loadout.skate, wheels: 'wheels-longhaul' } }, 'casual');
+  if (slidey.slideLenMul !== 1.5 || slidey.slideBrakeMul !== 0.85)
+    throw new Error(`powerslide stats wrong: ${JSON.stringify(slidey)}`);
+  // Hover ride reads hover slots (thrusters drive speed).
+  const hovers = computeStats(
+    { ...loadout, ride: 'hover', hover: { ...loadout.hover, thrusters: 'thr-plasma' } }, 'casual');
+  if (hovers.speedMul !== 1.25) throw new Error(`hover thruster stats wrong: ${JSON.stringify(hovers)}`);
+  // Free-test mode: everything owned without buying.
+  const ledFree = new LocalLedger(memStorage(), { unlockAll: true });
+  if (!ledFree.owns('hover', 'deck', 'deck-volt')) throw new Error('unlockAll did not unlock');
 
   // Leaderboard: ranked runs recorded (top-first), casual ignored.
   const NOW = 1_700_000_000_000;
@@ -378,5 +399,30 @@ function memStorage() {
   if (cm.route !== 'street') throw new Error('route did not revert to street after the roof run');
   console.log('underground route pieces OK');
 }
+
+// 13. High jumps: grind-jump and elevated ("second level") ollies pop with
+// highJumpVelocity; a flat-ground ollie stays standard.
+{
+  p.reset();
+  p.jump();
+  if (p.vy !== CONFIG.jumpVelocity) throw new Error('flat ollie velocity wrong');
+  p.reset();
+  p.y = CONFIG.containerTop; p.airborne = false; // standing on a container
+  p.jump();
+  if (p.vy !== CONFIG.highJumpVelocity) throw new Error('elevated ollie not high');
+  p.reset();
+  p.enterGrind(fakeRail);
+  p.jump(); // pop off the rail
+  if (p.vy !== CONFIG.highJumpVelocity) throw new Error('grind jump not high');
+  if (p.grinding) throw new Error('still grinding after rail pop');
+  console.log('high jumps OK');
+}
+
+// 14. Stance mirror: goofy flips the model on x, regular restores it.
+p.setStance('goofy');
+if (p.model.scale.x >= 0) throw new Error('goofy stance did not mirror the model');
+p.setStance('regular');
+if (p.model.scale.x <= 0) throw new Error('regular stance did not restore the model');
+console.log('stance mirror OK');
 
 console.log('ALL SMOKE TESTS PASSED');

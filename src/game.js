@@ -1,6 +1,6 @@
 // Game orchestration: state machine (menu / playing / gameover), the
 // per-frame update pipeline, speed ramp, scoring and camera follow.
-import { CONFIG, computeStats, partById } from './config.js';
+import { CONFIG, computeStats, partById, RIDES, RIDE_SLOTS, OUTFIT_SLOTS, SKILLS, scaleHex } from './config.js';
 import { LocalLedger } from './ledger.js';
 import { Player } from './player.js';
 import { World } from './world.js';
@@ -72,11 +72,24 @@ export class Game {
     this.camY = CONFIG.camHeight; // smoothed height-follow (must be seeded: the
     // loading/preview camera returns early, so an unset camY would go NaN and
     // blank the screen on the first run-camera frame)
+    this.camZoom = 0; // smoothed big-air zoom-out (0..1), seeded for the same reason
 
     // Character is a free cosmetic (kept as an index); the deck/wheels/trucks/
     // spinners loadout lives in the ledger.
     this.charIndex = loadIndex('skatehive-character', CONFIG.characters.length);
+    // Outfit overrides (0 = keep the preset color), persisted per slot.
+    this.outfit = {};
+    for (const slot of OUTFIT_SLOTS) {
+      this.outfit[slot] = loadIndex(`skatehive-${slot}`, CONFIG.outfits[slot].length);
+    }
+    // Skills (trick unlocks + passives) and stance. KICKFLIP is the free
+    // starter skill; devUnlockAll opens the whole tree.
+    let savedSkills = [];
+    try { savedSkills = JSON.parse(localStorage.getItem('skatehive-skills')) ?? []; } catch { /* fresh */ }
+    this.skills = new Set(['skill-kickflip', ...savedSkills.filter((id) => SKILLS.some((s) => s.id === id))]);
+    this.stance = localStorage.getItem('skatehive-stance') === 'goofy' ? 'goofy' : 'regular';
     this.mode = 'casual'; // 'casual' | 'ranked'
+    this.pending = null; // Skate Lab staged changes (set while the Lab is open)
     this.applySelection();
 
     this.continuesUsed = 0;
@@ -86,29 +99,19 @@ export class Game {
     this.updateCamera(0);
   }
 
-  // Selection step 1: character colors, on the turntable.
-  goToSelectChar() {
-    this.player.reset();
-    this.player.setVisible(true);
-    this.previewSpin = 0;
-    this.state = 'selectChar';
-    this.stateTime = 0;
-    this.hud.showScreen('selectChar');
-  }
-
-  // Selection step 2: the board — camera drops to frame the deck. Locked
-  // boards route the player to the store.
-  goToSelectBoard() {
-    this.player.setVisible(true);
-    this.state = 'selectBoard';
-    this.stateTime = 0;
-    this.hud.showScreen('selectBoard');
-  }
-
-  // Select / store / give-up → start screen: a clean title over the scrolling
+  // Lab / give-up → start screen: a clean title over the scrolling
   // city, no skater. A bailed skater gets back up (board re-attached) first.
   goToMenu() {
     if (this.player.bailing) this.player.reset();
+    // Leaving the Lab: back outside, discard staged changes.
+    this.world.setShopMode(false);
+    this.chunks.setHidden(false);
+    this.coins.setHidden(false);
+    this.powerups.setHidden(false);
+    if (this.pending) {
+      this.pending = null;
+      this.applySelection();
+    }
     this.player.group.rotation.y = 0;
     this.player.setVisible(false);
     this.state = 'menu';
@@ -123,61 +126,177 @@ export class Game {
     this.hud.showHowto();
   }
 
-  // Open the store (reuses the turntable preview to show the equipped skate).
+  // Open the Skate Lab: selections are STAGED into `pending` (live 3D + stat
+  // preview) and only committed — and charged — by checkout(). Leaving via
+  // BACK discards the staged changes.
   goToStore() {
     this.player.setVisible(true);
     this.previewSpin = 0;
+    // Step inside the shop: gray room replaces the street; hide any frozen
+    // obstacles/pickups that would be standing around the preview.
+    this.world.setShopMode(true);
+    this.chunks.setHidden(true);
+    this.coins.setHidden(true);
+    this.powerups.setHidden(true);
+    this.pending = { loadout: this.ledger.getLoadout(), charIndex: this.charIndex, outfit: { ...this.outfit }, skills: new Set(this.skills), stance: this.stance };
     this.state = 'store';
     this.stateTime = 0;
     this.hud.showStore(this.storeState());
   }
 
-  // Snapshot for the Skate Lab UI: ownership + equipped loadout + the live
-  // stat readout the dashboard bars render.
-  storeState() {
-    const owned = {};
-    const equipped = this.ledger.getLoadout();
-    for (const slot of Object.keys(CONFIG.parts)) {
-      owned[slot] = CONFIG.parts[slot].map((p) => this.ledger.owns(slot, p.id));
+  // Staged parts + skills not yet owned, with their total price.
+  _cart() {
+    const pend = this.pending;
+    const loadout = pend?.loadout ?? this.ledger.getLoadout();
+    let total = 0;
+    const items = [];
+    for (const ride of RIDES) {
+      for (const slot of RIDE_SLOTS[ride]) {
+        const id = loadout[ride][slot];
+        if (!this.ledger.owns(ride, slot, id)) {
+          const part = partById(ride, slot, id);
+          items.push({ kind: 'part', ride, slot, id, cost: part.cost });
+          total += part.cost;
+        }
+      }
     }
+    if (pend?.skills) {
+      for (const skill of SKILLS) {
+        if (pend.skills.has(skill.id) && !this.skills.has(skill.id) && !this.ledger.unlockAll) {
+          items.push({ kind: 'skill', id: skill.id, cost: skill.cost });
+          total += skill.cost;
+        }
+      }
+    }
+    return { items, total };
+  }
+
+  // Snapshot for the Skate Lab UI: staged loadout + ownership + stat bars +
+  // cart total for the checkout button.
+  storeState() {
+    const pend = this.pending ?? { loadout: this.ledger.getLoadout(), charIndex: this.charIndex, outfit: { ...this.outfit }, skills: new Set(this.skills), stance: this.stance };
+    const { loadout, charIndex, outfit, skills, stance } = pend;
+    const owned = {};
+    for (const ride of RIDES) {
+      owned[ride] = {};
+      for (const slot of RIDE_SLOTS[ride]) {
+        owned[ride][slot] = CONFIG.parts[ride][slot].map((p) => this.ledger.owns(ride, slot, p.id));
+      }
+    }
+    const cart = this._cart();
     return {
       balance: this.ledger.getBalance(),
       pot: this.ledger.getPot(),
-      equipped,
+      ride: loadout.ride,
+      equipped: loadout,
       owned,
-      charIndex: this.charIndex,
-      stats: computeStats(equipped, 'casual'),
+      charIndex,
+      outfit,
+      stance,
+      // Per-skill status for the UI: owned (committed) vs staged (in cart).
+      skills: SKILLS.map((s) => ({
+        id: s.id,
+        owned: this.ledger.unlockAll || this.skills.has(s.id),
+        staged: skills.has(s.id),
+      })),
+      stats: computeStats(loadout, 'casual'),
       free: this.ledger.unlockAll,
+      cartTotal: cart.total,
+      canAfford: cart.total <= this.ledger.getBalance(),
     };
   }
 
-  // Repaint the skater from the character colors + equipped loadout: deck
-  // color/glow/ride, plus wheel/truck cosmetics.
-  applySelection() {
-    const loadout = this.ledger.getLoadout();
-    const deck = partById('deck', loadout.deck);
+  // Commit the staged configuration: buy anything unowned (pre-checked
+  // against the wallet), switch ride, equip every staged slot, save the
+  // character. Returns the fresh state for the UI.
+  async checkout() {
+    if (!this.pending) return this.storeState();
+    const { loadout, charIndex, outfit, skills, stance } = this.pending;
+    const cart = this._cart();
+    if (!this.ledger.unlockAll && cart.total > this.ledger.getBalance()) {
+      this.hud.showToast('NOT ENOUGH ⚙️');
+      return this.storeState();
+    }
+    for (const item of cart.items) {
+      if (item.kind === 'skill') await this.ledger.charge(item.cost, `skill ${item.id}`);
+      else await this.ledger.buy(item.ride, item.slot, item.id);
+    }
+    await this.ledger.setRide(loadout.ride);
+    for (const ride of RIDES) {
+      for (const slot of RIDE_SLOTS[ride]) {
+        await this.ledger.equip(ride, slot, loadout[ride][slot]);
+      }
+    }
+    this.selectCharacter(charIndex);
+    this.outfit = { ...outfit };
+    for (const slot of OUTFIT_SLOTS) saveIndex(`skatehive-${slot}`, this.outfit[slot]);
+    this.skills = new Set(skills);
+    localStorage.setItem('skatehive-skills', JSON.stringify([...this.skills]));
+    this.stance = stance;
+    localStorage.setItem('skatehive-stance', this.stance);
+    this.applySelection();
+    this.pending = { loadout: this.ledger.getLoadout(), charIndex: this.charIndex, outfit: { ...this.outfit }, skills: new Set(this.skills), stance: this.stance };
+    this.hud.showToast('✔ GEAR APPLIED');
+    return this.storeState();
+  }
+
+  // Repaint the skater from character colors + a loadout (defaults to the
+  // ledger's equipped state; the Skate Lab passes its staged preview instead).
+  applySelection(loadout = this.ledger.getLoadout(), charIndex = this.charIndex, outfit = this.outfit) {
+    const ride = loadout.ride;
+    const ld = loadout[ride];
+    const deck = partById(ride, 'deck', ld.deck);
     const palette = {
-      ...CONFIG.characters[this.charIndex].colors,
+      ...CONFIG.characters[charIndex].colors,
       deck: deck.deck,
       ...(deck.glow !== undefined && { glow: deck.glow }),
     };
+    // Outfit overrides paint over the preset (sleeve tracks the shirt).
+    const shirt = CONFIG.outfits.shirt[outfit.shirt]?.color;
+    if (shirt != null) {
+      palette.shirt = shirt;
+      palette.sleeve = scaleHex(shirt, 0.78);
+    }
+    const pants = CONFIG.outfits.pants[outfit.pants]?.color;
+    if (pants != null) palette.pants = pants;
+    const cap = CONFIG.outfits.cap[outfit.cap]?.color;
+    if (cap != null) palette.cap = cap;
+    this.player.applyBrand(CONFIG.outfits.brand[outfit.brand] ?? null);
+    this.player.setStance(this.pending?.stance ?? this.stance);
     this.player.applyPalette(palette);
-    this.player.setRide(deck.ride);
+    this.player.setRide(ride);
+    // Slots 1 and 2 of each ride carry the visible accessory cosmetics
+    // (wheels/trucks or thrusters/mag-locks).
+    const [, slotA, slotB] = RIDE_SLOTS[ride];
     this.player.applyLoadoutCosmetics(
-      partById('wheels', loadout.wheels),
-      partById('trucks', loadout.trucks)
+      ride,
+      partById(ride, slotA, ld[slotA]),
+      partById(ride, slotB, ld[slotB])
     );
   }
 
-  // Index of the equipped deck within CONFIG.boards — for the select-screen
-  // swatch highlight (which still cycles the deck catalog).
-  get boardIndex() {
-    return Math.max(0, CONFIG.boards.findIndex((d) => d.id === this.ledger.getEquipped('deck')));
+  // Resolve a base trick input through stance and ride: goofy leads with the
+  // other foot (kick/heel swap), hoverboards fire the futuristic set.
+  trickFor(name) {
+    let base = name;
+    const stance = this.pending?.stance ?? this.stance;
+    if (stance === 'goofy') {
+      if (base === 'kickflip') base = 'heelflip';
+      else if (base === 'heelflip') base = 'kickflip';
+    }
+    return this.player.isHover ? CONFIG.hoverTrickFor[base] ?? base : base;
   }
 
-  // On a hoverboard the classic trick inputs fire the futuristic set.
-  trickFor(name) {
-    return this.player.isHover ? CONFIG.hoverTrickFor[name] ?? name : name;
+  // Is the skill gating this base trick unlocked?
+  skillUnlocked(base) {
+    const skill = SKILLS.find((s) => s.unlocks === base);
+    return !skill || this.ledger.unlockAll || this.skills.has(skill.id);
+  }
+
+  // Try a base trick input, honoring skill unlocks + stance + ride mapping.
+  attemptTrick(base, replace = false) {
+    if (!this.skillUnlocked(base)) return false;
+    return this.player.tryTrick(this.trickFor(base), replace);
   }
 
   selectCharacter(i) {
@@ -186,34 +305,23 @@ export class Game {
     this.applySelection();
   }
 
-  // Equip a deck from the select screen — only if owned; locked decks are
-  // bought in the store.
-  selectBoard(i) {
-    const deck = CONFIG.boards[i];
-    if (!this.ledger.owns('deck', deck.id)) return false;
-    this.ledger.equip('deck', deck.id);
-    this.applySelection();
-    return true;
-  }
-
-  // Store tap: equip if owned (always, in free-test mode), otherwise buy then
-  // equip. slot 'character' swaps the skater preset. Returns a fresh snapshot.
+  // Lab tap: STAGE the change (nothing is bought or persisted until
+  // checkout). 'ride' switches category, 'character' swaps the preset,
+  // anything else slots a part into the staged loadout for its ride.
   async storeSelect(slot, id) {
-    if (slot === 'character') {
-      this.selectCharacter(id);
-    } else if (this.ledger.owns(slot, id)) {
-      await this.equipPart(slot, id);
-    } else {
-      const r = await this.ledger.buy(slot, id);
-      if (r.ok) await this.equipPart(slot, id);
-    }
+    if (!this.pending) this.pending = { loadout: this.ledger.getLoadout(), charIndex: this.charIndex, outfit: { ...this.outfit }, skills: new Set(this.skills), stance: this.stance };
+    const pend = this.pending;
+    if (slot === 'ride') pend.loadout.ride = id;
+    else if (slot === 'character') pend.charIndex = id;
+    else if (slot === 'stance') pend.stance = id;
+    else if (slot === 'skill') {
+      // Stage a skill purchase; tapping an un-committed staged skill un-stages it.
+      if (pend.skills.has(id) && !this.skills.has(id)) pend.skills.delete(id);
+      else pend.skills.add(id);
+    } else if (OUTFIT_SLOTS.includes(slot)) pend.outfit[slot] = id;
+    else pend.loadout[pend.loadout.ride][slot] = id;
+    this.applySelection(pend.loadout, pend.charIndex, pend.outfit); // live 3D preview
     return this.storeState();
-  }
-
-  async equipPart(slot, id) {
-    const r = await this.ledger.equip(slot, id);
-    this.applySelection();
-    return r;
   }
 
   get currentSpeed() {
@@ -243,6 +351,10 @@ export class Game {
     this.mode = mode;
     // Loadout stats apply in casual; ranked normalizes them (fair pot board).
     this.player.stats = computeStats(this.ledger.getLoadout(), mode);
+    // SWAG passive: style pays better — casual only, like all paid stats.
+    if (mode === 'casual' && (this.ledger.unlockAll || this.skills.has('skill-swag'))) {
+      this.player.stats.trickScoreMul *= 1.1;
+    }
     this.player.reset();
     this.player.setVisible(true);
     this.coins.reset();
@@ -330,19 +442,11 @@ export class Game {
         if (this.loadingT >= LOADING_DURATION) this.goToMenu(); // straight to play
         break;
 
-      case 'selectChar':
-      case 'selectBoard':
-        this.world.update(dt, 4);
-        this.player.update(dt);
-        this.previewSpin += dt * 0.7;
-        this.player.group.rotation.y = this.previewSpin; // slow turntable preview
-        break;
-
       case 'store':
-        this.world.update(dt, 4);
+        // Inside the shop room: no street scroll, just the turntable.
         this.player.update(dt);
         this.previewSpin += dt * 0.7;
-        this.player.group.rotation.y = this.previewSpin; // preview equipped skate
+        this.player.group.rotation.y = this.previewSpin;
         break;
 
       case 'menu':
@@ -377,11 +481,11 @@ export class Game {
     if (!p.airborne || p.grinding || p.bailing) return;
     const now = this.stateTime;
     if (this.lastAirDir === -dir && now - this.lastAirDirTime < 0.3) {
-      p.tryTrick(this.trickFor('shuvit'), true);
+      this.attemptTrick('shuvit', true);
       this.lastAirDir = 0;
       return;
     }
-    p.tryTrick(this.trickFor('heelflip'));
+    this.attemptTrick('heelflip');
     this.lastAirDir = dir;
     this.lastAirDirTime = now;
   }
@@ -396,8 +500,9 @@ export class Game {
     // Momentum: powerslides scrub speed, grinds pump it up, and either eases
     // back to normal pace afterwards — risk pays, safety costs. An oil slick
     // drags you down; a burning boost overrides everything.
+    // Wheels tune the powerslide: slideBrakeMul > 1 scrubs harder.
     let modTarget = this.player.sliding
-      ? CONFIG.slideDrag
+      ? Math.max(0.5, CONFIG.slideDrag / this.player.stats.slideBrakeMul)
       : this.player.grinding
         ? CONFIG.grindBoost
         : 1;
@@ -426,7 +531,7 @@ export class Game {
       } else if (action === 'jump') {
         // Second jump input while already in the air = kickflip (or hoverspin).
         if (this.player.airborne && !this.player.grinding) {
-          this.player.tryTrick(this.trickFor('kickflip'));
+          this.attemptTrick('kickflip');
         } else if (!this.player.airborne) {
           this.player.jump();
           this.audio.sfx('ollie');
@@ -442,7 +547,7 @@ export class Game {
           this.hud.showTrick('🔥 BOOST!');
         }
       } else if (action in CONFIG.tricks) {
-        this.player.tryTrick(this.trickFor(action)); // Z/X/C shortcuts still work
+        this.attemptTrick(action); // Z/X/C shortcuts still work
       }
     }
 
@@ -465,9 +570,15 @@ export class Game {
       this.audio.sfx('bearing');
     }
 
-    // Powerup pickups start (or refresh) their effect timers.
+    // Powerup pickups: energy drinks add a boost charge instantly; the rest
+    // start (or refresh) their effect timers.
     for (const type of this.powerups.update(dt, this.speed, this.player)) {
-      this.effects[type] = CONFIG.powerups[type].dur;
+      if (type === 'drink') {
+        this.boost = Math.min(CONFIG.boostMax, this.boost + 1);
+        this.audio.sfx('bearing');
+      } else {
+        this.effects[type] = CONFIG.powerups[type].dur;
+      }
       this.hud.showToast(CONFIG.powerups[type].label);
     }
 
@@ -479,7 +590,7 @@ export class Game {
         const def = CONFIG.tricks[ev.name];
         const pts = Math.round(def.score * trickMul);
         this.score += pts;
-        this.boost = Math.min(1, this.boost + CONFIG.boostChargeTrick); // tricks feed the nitro
+        this.boost = Math.min(CONFIG.boostMax, this.boost + CONFIG.boostChargeTrick); // tricks feed the nitro
         this.audio.sfx('trick');
         this.hud.showTrick(`${def.label} +${pts}`);
       } else if (ev.type === 'trickIntoGrind') {
@@ -528,7 +639,7 @@ export class Game {
     if (this.player.grinding) {
       this.score +=
         (CONFIG.grindScoreRate + CONFIG.grindScoreRamp * this.player.grindTime) * dt * sm;
-      this.boost = Math.min(1, this.boost + CONFIG.boostChargeGrind * dt);
+      this.boost = Math.min(CONFIG.boostMax, this.boost + CONFIG.boostChargeGrind * dt);
     } else if (!this.player.airborne && this.player.y > 0.5) {
       // Riding along a raised platform (container top) pays a steady bonus.
       this.score += CONFIG.platformScoreRate * dt * sm;
@@ -555,17 +666,6 @@ export class Game {
   updateCamera(dt) {
     const cam = this.camera;
 
-    // Loading, selection & store use a close, forward-facing skater preview;
-    // the board step drops the camera low to frame the deck itself.
-    if (this.state === 'selectBoard') {
-      cam.position.set(0, 0.85, 2.9);
-      cam.lookAt(0, 0.3, 0);
-      if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
-        cam.fov = CONFIG.fovBase;
-        cam.updateProjectionMatrix();
-      }
-      return;
-    }
     // Skate Lab frames the skater on the LEFT (config panel fills the right).
     if (this.state === 'store') {
       cam.position.set(1.7, 1.25, 4.1);
@@ -576,7 +676,7 @@ export class Game {
       }
       return;
     }
-    if (this.state === 'loading' || this.state === 'selectChar') {
+    if (this.state === 'loading') {
       cam.position.set(0, 1.35, 3.8);
       cam.lookAt(0, 0.82, 0);
       if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
@@ -594,7 +694,15 @@ export class Game {
     const y = this.player.y;
     const camY = CONFIG.camHeight + y * 0.9;
     this.camY = dt ? this.camY + (camY - this.camY) * Math.min(1, dt * 6) : camY;
-    cam.position.set(this.camX, this.camY, CONFIG.camBack + y * 0.28);
+    // Big air (high-jumps off rails / second-level ollies) eases the camera
+    // out and up so the height reads — and eases back in on landing.
+    const airT = this.player.airborne ? Math.min(1, Math.max(0, (y - this.player.floorY - 1.4) / 4)) : 0;
+    this.camZoom = dt ? this.camZoom + (airT - this.camZoom) * Math.min(1, dt * 4) : airT;
+    cam.position.set(
+      this.camX,
+      this.camY + this.camZoom * 0.9,
+      CONFIG.camBack + y * 0.28 + this.camZoom * 2.6
+    );
     cam.lookAt(this.camX * 0.6, 1.2 + y * 0.85, CONFIG.camLookAhead);
 
     // FOV pushes out with speed for a sense of acceleration.
@@ -605,7 +713,8 @@ export class Game {
     const targetFov =
       CONFIG.fovBase +
       (CONFIG.fovMax - CONFIG.fovBase) * speedT +
-      (this.boostT > 0 ? 6 : 0); // extra kick while the nitro burns
+      (this.boostT > 0 ? 6 : 0) + // extra kick while the nitro burns
+      this.camZoom * 5; // and a wide-angle breath at the top of big air
     if (Math.abs(cam.fov - targetFov) > 0.05) {
       cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 3);
       cam.updateProjectionMatrix();

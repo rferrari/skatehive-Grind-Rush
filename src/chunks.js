@@ -323,6 +323,11 @@ export class ChunkManager {
     this.banned = types ?? [];
   }
 
+  // Hide/show all live obstacles (Skate Lab swaps the street for a shop room).
+  setHidden(h) {
+    for (const mesh of this.active) mesh.visible = !h;
+  }
+
   reset() {
     for (const mesh of this.active) this.pool.release(mesh);
     this.active.length = 0;

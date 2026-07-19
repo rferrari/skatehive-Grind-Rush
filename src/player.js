@@ -5,9 +5,39 @@
 //
 // Gameplay events (trick landed, balance bail, ...) are queued on
 // this.events and drained by game.js via popEvents().
-import { Group, Mesh, CircleGeometry, ConeGeometry, MeshBasicMaterial } from 'three';
+import { Group, Mesh, CircleGeometry, ConeGeometry, MeshBasicMaterial, CanvasTexture } from 'three';
 import { CONFIG } from './config.js';
 import { buildSkater, DEFAULT_SKATER_PALETTE } from './meshes.js';
+
+// Chest-logo textures, drawn once per brand on an offscreen canvas (emoji or
+// the SKATEHIVE wordmark) — no image assets, works offline. Browser-only.
+const brandTextures = new Map();
+function brandTexture(brand) {
+  if (brandTextures.has(brand.id)) return brandTextures.get(brand.id);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  if (brand.logo.length > 3) {
+    // Wordmark: stacked bold text with an outline so it reads on any shirt.
+    g.font = 'bold 64px "Courier New", monospace';
+    g.lineWidth = 10;
+    g.strokeStyle = '#111';
+    g.fillStyle = '#fff';
+    g.strokeText('SKATE', 128, 96);
+    g.fillText('SKATE', 128, 96);
+    g.strokeText('HIVE', 128, 164);
+    g.fillText('HIVE', 128, 164);
+  } else {
+    g.font = '170px serif'; // emoji glyph
+    g.fillText(brand.logo, 128, 140);
+  }
+  const tex = new CanvasTexture(c);
+  brandTextures.set(brand.id, tex);
+  return tex;
+}
 
 const lerp = (a, b, t) => a + (b - a) * t;
 // Frame-rate independent exponential approach.
@@ -32,7 +62,10 @@ export class Player {
     this.ride = 'skate'; // 'skate' | 'hover' — survives reset()
     // Loadout stat multipliers (game.js sets these per run from computeStats);
     // neutral by default so headless/test callers behave like base tuning.
-    this.stats = { speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1, trickSpeedMul: 1, trickScoreMul: 1 };
+    this.stats = {
+      speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1,
+      trickSpeedMul: 1, trickScoreMul: 1, slideBrakeMul: 1, slideLenMul: 1,
+    };
     // Soft blob shadow that grounds the skater; shrinks/fades with air height.
     this.shadowMat = new MeshBasicMaterial({
       color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false,
@@ -67,15 +100,31 @@ export class Player {
     for (const f of this.flames) f.visible = on;
   }
 
-  // Apply the cosmetic side of an equipped loadout: wheel color/size and truck
-  // color. (Deck color/glow + ride go through applyPalette/setRide.)
-  applyLoadoutCosmetics(wheelsPart, trucksPart) {
-    if (wheelsPart?.cosmetic) {
-      this.mats.wheel.color.setHex(wheelsPart.cosmetic.color);
-      const r = wheelsPart.cosmetic.radius ?? 0.09;
-      for (const w of this.parts.wheels) w.scale.setScalar(r / 0.09);
+  // Apply the cosmetic side of the equipped loadout for the active ride.
+  // Skate: wheel color/size + truck color. Hover: thruster jet color/size +
+  // mag-lock pod color. (Deck color/glow + ride go via applyPalette/setRide.)
+  applyLoadoutCosmetics(ride, partA, partB) {
+    if (ride === 'skate') {
+      if (partA?.cosmetic) {
+        this.mats.wheel.color.setHex(partA.cosmetic.color);
+        const r = partA.cosmetic.radius ?? 0.09;
+        for (const w of this.parts.wheels) w.scale.setScalar(r / 0.09);
+      }
+      if (partB?.cosmetic) this.mats.truck.color.setHex(partB.cosmetic.color);
+    } else {
+      if (partA?.cosmetic) {
+        this.mats.thruster.color.setHex(partA.cosmetic.color);
+        this.mats.thruster.emissive.setHex(partA.cosmetic.color);
+        // Jets are unit boxes whose DIMENSIONS live in scale — multiply the
+        // remembered base, never overwrite it (that made a giant neon cube).
+        const s = partA.cosmetic.size ?? 1;
+        for (const jet of this.parts.thrusterJets) {
+          jet.userData.baseScale ??= jet.scale.clone();
+          jet.scale.copy(jet.userData.baseScale).multiplyScalar(s);
+        }
+      }
+      if (partB?.cosmetic) this.mats.pod.color.setHex(partB.cosmetic.color);
     }
-    if (trucksPart?.cosmetic) this.mats.truck.color.setHex(trucksPart.cosmetic.color);
   }
 
   // Recolor the skater/board live from a selected character + board palette.
@@ -86,6 +135,24 @@ export class Player {
       this.mats[key].color.setHex(p[key]);
       if (key === 'glow') this.mats.glow.emissive.setHex(p[key]);
     }
+  }
+
+  // Stance: goofy mirrors the whole model (lead foot flips).
+  setStance(stance) {
+    const s = CONFIG.playerVisualScale;
+    this.model.scale.set(stance === 'goofy' ? -s : s, s, s);
+  }
+
+  // Chest brand print (null/NONE hides it). No-op headless (no canvas).
+  applyBrand(brand) {
+    const logo = this.parts.logo;
+    if (!brand?.logo || typeof document === 'undefined') {
+      logo.visible = false;
+      return;
+    }
+    this.mats.logo.map = brandTexture(brand);
+    this.mats.logo.needsUpdate = true;
+    logo.visible = true;
   }
 
   // Hide/show the whole skater (menu screens run the world without them).
@@ -180,9 +247,13 @@ export class Player {
   jump() {
     if (this.bailing) return;
     if (this.grinding) {
-      this.exitGrind(CONFIG.jumpVelocity); // full jump off the rail
+      // Popping off a rail carries the grind's energy — extra height, enough
+      // to reach a container top or chain onto something big.
+      this.exitGrind(CONFIG.highJumpVelocity);
     } else if (!this.airborne) {
-      this.vy = CONFIG.jumpVelocity;
+      // "Second-level" ollie: jumping from an elevated surface (container,
+      // rooftop) also pops higher than a flat-ground ollie.
+      this.vy = this.y > 0.5 ? CONFIG.highJumpVelocity : CONFIG.jumpVelocity;
       this.airborne = true;
       this.sliding = false;
     }
@@ -346,7 +417,8 @@ export class Player {
       }
       if (this.sliding) {
         this.slideTime += dt;
-        if (this.slideTime > CONFIG.slideDuration) this.sliding = false;
+        // Wheel choice stretches or shortens how long a powerslide holds.
+        if (this.slideTime > CONFIG.slideDuration * this.stats.slideLenMul) this.sliding = false;
       }
     }
 
