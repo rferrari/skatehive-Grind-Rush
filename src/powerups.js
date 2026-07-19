@@ -69,6 +69,10 @@ export class PowerupManager {
     this.active.splice(index, 1);
   }
 
+  setHidden(h) {
+    for (const { mesh } of this.active) mesh.visible = !h;
+  }
+
   reset() {
     while (this.active.length) this.releaseAt(this.active.length - 1);
   }

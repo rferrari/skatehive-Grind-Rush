@@ -102,7 +102,59 @@ export class World {
     }
     this.location = null;
 
+    // Skate Lab interior: a gray boxed room around the preview spot, shown
+    // instead of the street while shopping.
+    this.shopRoom = this.buildShopRoom();
+    this.shopRoom.visible = false;
+    scene.add(this.shopRoom);
+
     this.setTheme(CONFIG.levels[0], true);
+  }
+
+  buildShopRoom() {
+    const g = new THREE.Group();
+    const wall = new THREE.MeshLambertMaterial({ color: 0x63666d });
+    const wallDark = new THREE.MeshLambertMaterial({ color: 0x51545a });
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x3f4145 });
+    const neon = new THREE.MeshLambertMaterial({ color: 0x2ee6ff, emissive: 0x1fb8d4 });
+    const b = (mat, sx, sy, sz, x, y, z) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      m.position.set(x, y, z);
+      g.add(m);
+      return m;
+    };
+    // Enclosing shell (camera sits inside): floor, three walls, ceiling.
+    b(floorMat, 12, 0.2, 14, 0, -0.1, 0);
+    b(wall, 12, 6, 0.4, 0, 3, -6); // back
+    b(wall, 0.4, 6, 14, -6, 3, 0); // sides
+    b(wall, 0.4, 6, 14, 6, 3, 0);
+    b(wallDark, 12, 0.4, 14, 0, 5.8, 0); // ceiling
+    // Wall panelling + neon shop strip.
+    b(wallDark, 12, 1.4, 0.42, 0, 0.7, -5.98);
+    b(neon, 7, 0.14, 0.1, 0, 4.1, -5.75);
+    // Shelves with a few display decks for shop vibe.
+    for (const y of [1.8, 2.9]) b(wallDark, 5.5, 0.12, 0.7, -1.5, y, -5.5);
+    const deckColors = [0xc0392b, 0x16a085, 0xf1c40f, 0x2ee6ff, 0xff3df2];
+    deckColors.forEach((c, i) => {
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.8, 0.05),
+        new THREE.MeshLambertMaterial({ color: c })
+      );
+      deck.position.set(-3.5 + i, i % 2 === 0 ? 2.35 : 3.45, -5.5);
+      deck.rotation.z = 0.08 * (i % 2 === 0 ? 1 : -1);
+      g.add(deck);
+    });
+    // Soft ceiling light panels.
+    b(neon, 2.2, 0.06, 0.5, -1.5, 5.55, -1);
+    b(neon, 2.2, 0.06, 0.5, 1.8, 5.55, 1.5);
+    return g;
+  }
+
+  // Skate Lab mode: swap the street for the shop room.
+  setShopMode(on) {
+    this.shopRoom.visible = on;
+    for (const seg of this.segments) seg.visible = !on;
+    if (this.location) for (const obj of this.pools[this.location]) obj.visible = !on;
   }
 
   setLocation(key) {

@@ -46,9 +46,26 @@ body {
   letter-spacing: 2px;
 }
 
+#center-hud {
+  text-align: center;
+  line-height: 1.15;
+}
+
+#speed {
+  font-size: 22px;
+  font-weight: bold;
+  color: #ffe14d;
+}
+
+#speed .unit {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
 #coins {
   font-size: 22px;
   font-weight: bold;
+  margin-right: 48px; /* clear the fixed mute button in the corner */
 }
 
 #level {
@@ -56,6 +73,48 @@ body {
   font-weight: bold;
   letter-spacing: 2px;
   opacity: 0.9;
+}
+
+/* Energy drinks ⚡ (grab cans / earn via tricks; SHIFT / B / two-finger tap) */
+#boost-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#boost-count {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffe14d;
+}
+
+#boost-track {
+  width: 180px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+#boost-fill {
+  height: 100%;
+  width: 0%;
+  background: #ff7a1a;
+  transition: width 0.15s linear;
+}
+
+#boost-track.ready {
+  box-shadow: 0 0 8px 1px #ff7a1a;
+}
+
+#boost-track.surge #boost-fill {
+  background: #ffe14d;
+}
+
+#boost-track.surge {
+  box-shadow: 0 0 12px 3px #ffe14d;
 }
 
 #effects {
@@ -174,6 +233,87 @@ body {
   font-size: clamp(40px, 9vw, 84px);
   letter-spacing: 6px;
   line-height: 1.05;
+  /* Black outline (8-direction shadow — broader support than text-stroke)
+     plus a deep drop shadow so the title pops off any sky. */
+  text-shadow:
+    -2px -2px 0 #0a0a0a, 2px -2px 0 #0a0a0a, -2px 2px 0 #0a0a0a, 2px 2px 0 #0a0a0a,
+    -2px 0 0 #0a0a0a, 2px 0 0 #0a0a0a, 0 -2px 0 #0a0a0a, 0 2px 0 #0a0a0a,
+    5px 6px 0 rgba(0, 0, 0, 0.45);
+  animation: title-in 0.7s ease-out both;
+}
+
+@keyframes title-in {
+  from {
+    transform: translateY(-14px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* Menu mode cards: three equal squares — Lab, Free Skate, Ranked */
+.menu-cards {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.menu-card {
+  width: clamp(96px, 26vw, 128px);
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font: inherit;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  touch-action: manipulation;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.menu-card:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.card-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.card-label {
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.card-sub {
+  font-size: 10px;
+  opacity: 0.85;
+  padding: 0 6px;
+  text-align: center;
+}
+
+.card-lab {
+  background: linear-gradient(160deg, #133c4a, #0b2530);
+  border-color: #2ee6ff;
+}
+
+.card-free {
+  background: linear-gradient(160deg, #e8641b, #a33f0c);
+}
+
+.card-ranked {
+  background: linear-gradient(160deg, #c9930a, #8a6206);
 }
 
 .overlay .prompt {
@@ -250,7 +390,8 @@ body {
 #loading-bar {
   height: 100%;
   width: 0%;
-  background: #ffe14d;
+  background: linear-gradient(90deg, #ff7a1a, #ffe14d);
+  box-shadow: 0 0 10px 2px rgba(255, 225, 77, 0.55);
   transition: width 0.1s linear;
 }
 
@@ -352,15 +493,42 @@ body {
   font-size: 18px;
 }
 
-/* Store — its content can outgrow the viewport, so this overlay scrolls
-   (touch-action re-enables vertical panning inside the no-touch page). */
+/* Skate Lab — pro-game customization: transparent left half shows the 3D
+   turntable, dark right panel holds the config dashboard and scrolls. */
 #store {
-  justify-content: flex-start;
-  gap: 12px;
-  padding-top: 4vh;
-  padding-bottom: 5vh;
+  padding: 0;
+  background: none; /* keep the 3D view bright on the preview side */
+  overflow: hidden;
+}
+
+.store-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.store-preview {
+  flex: 1 1 36%;
+}
+
+.store-panel {
+  flex: 1 1 64%;
+  max-width: 700px;
+  height: 100%;
   overflow-y: auto;
   touch-action: pan-y;
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.88), rgba(8, 12, 18, 0.8));
+  border-left: 2px solid rgba(46, 230, 255, 0.35);
+  padding: 20px 22px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  text-align: left;
+}
+
+.store-panel .screen-title {
+  font-size: clamp(24px, 4vw, 40px);
 }
 
 .store-header {
@@ -368,14 +536,231 @@ body {
   align-items: center;
   gap: 18px;
   flex-wrap: wrap;
-  justify-content: center;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.store-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.store-actions .btn-primary {
+  font-size: 16px;
+  padding: 10px 18px;
+}
+
+.store-actions .btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ride-tile {
+  min-width: 110px;
+  background: rgba(46, 230, 255, 0.08);
+}
+
+/* SKATER / RIDE section tabs */
+.store-tabs {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.store-tab {
+  flex: 1;
+  padding: 10px 8px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.store-tab.active {
+  background: rgba(46, 230, 255, 0.18);
+  border-color: #2ee6ff;
+}
+
+.store-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Catalog carousels: ◂ [selected item card] ▸ — one compact row per slot */
+.car-row {
+  display: grid;
+  grid-template-columns: 92px 40px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.car-btn {
+  height: 52px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.car-btn:active {
+  background: rgba(46, 230, 255, 0.25);
+}
+
+.car-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 12px;
+  font: inherit;
+  color: #fff;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+  overflow: hidden;
+}
+
+.car-card.equipped {
+  border-color: #2ee6ff;
+  box-shadow: 0 0 8px 1px rgba(46, 230, 255, 0.55);
+}
+
+.car-mid {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.car-mid .tile-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.car-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.car-pos {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.free-tag {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #0a0a0a;
+  background: #2ee6ff;
+  padding: 2px 7px;
+  border-radius: 5px;
+  vertical-align: middle;
+}
+
+/* Dashboard stat bars */
+#store-dash {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+}
+
+.dash-row {
+  display: grid;
+  grid-template-columns: 118px 1fr 58px;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-label {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  opacity: 0.85;
+}
+
+.dash-track {
+  display: block;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dash-fill {
+  display: block;
+  height: 100%;
+  width: 12%;
+  background: linear-gradient(90deg, #1fb8d4, #2ee6ff);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.dash-delta {
+  font-size: 12px;
+  font-weight: bold;
+  text-align: right;
+  opacity: 0.65;
+}
+
+.dash-delta.boosted {
+  color: #2ee6ff;
+  opacity: 1;
 }
 
 #store-slots {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: min(92vw, 620px);
+  width: 100%;
+}
+
+/* Phones: stack — preview strip on top, panel below */
+@media (max-width: 700px) {
+  .store-layout {
+    flex-direction: column;
+  }
+  .store-preview {
+    flex: 0 0 26vh;
+  }
+  .store-panel {
+    max-width: none;
+    border-left: none;
+    border-top: 2px solid rgba(46, 230, 255, 0.35);
+  }
+  .car-row {
+    grid-template-columns: 58px 36px 1fr 36px;
+  }
+  .car-row .sel-label {
+    width: auto;
+    font-size: 11px;
+  }
 }
 
 .store-row {
@@ -492,6 +877,23 @@ body {
 
 .swatch-hover.active {
   box-shadow: 0 0 0 2px #ffe14d, 0 0 12px 3px var(--glow);
+}
+
+#mute-btn {
+  position: fixed;
+  top: 12px;
+  right: 14px;
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  line-height: 1;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .hidden {

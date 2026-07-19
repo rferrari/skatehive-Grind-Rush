@@ -16,64 +16,10 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const game = new Game(scene, camera);
+window.__game = game; // dev/test handle (drives headless route + screenshot checks)
 
-// ---- Character + board selector (menu screen) ----
-// Swatch buttons that recolor the live skater and persist the choice. The
-// skater is on-screen behind the menu, so picks preview instantly.
-const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
-
-function buildSwatches(containerId, items, colorOf, getActive, onPick, isLocked = null) {
-  const wrap = document.getElementById(containerId);
-  const buttons = items.map((item, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'swatch';
-    btn.style.background = hex(colorOf(item));
-    btn.title = item.name;
-    // Hoverboards glow in the picker too (via --glow so .active still styles).
-    if (item.ride === 'hover') {
-      btn.classList.add('swatch-hover');
-      btn.style.setProperty('--glow', hex(item.glow));
-    }
-    btn.addEventListener('click', () => {
-      onPick(i);
-      refresh();
-    });
-    wrap.appendChild(btn);
-    return btn;
-  });
-  // Swallow touch on the selector so a tap doesn't also start the run.
-  for (const type of ['touchstart', 'touchend']) {
-    wrap.addEventListener(type, (e) => e.stopPropagation());
-  }
-  function refresh() {
-    const active = getActive();
-    buttons.forEach((b, i) => {
-      b.classList.toggle('active', i === active);
-      if (isLocked) b.classList.toggle('locked', isLocked(items[i]));
-    });
-  }
-  refresh();
-}
-
-buildSwatches('char-options', CONFIG.characters, (c) => c.colors.shirt,
-  () => game.charIndex, (i) => game.selectCharacter(i));
-
-// Board row: owned decks equip; locked ones show their price and point at the
-// store. The info line under the swatches explains whichever was tapped.
-function boardInfoFor(deck) {
-  if (game.ledger.owns('deck', deck.id)) {
-    const equipped = game.ledger.getEquipped('deck') === deck.id;
-    return equipped ? `${deck.name} — equipped ✓` : `${deck.name} — tap to equip`;
-  }
-  return `🔒 ${deck.name} — ⚙️ ${deck.cost} in the store`;
-}
-buildSwatches('board-options', CONFIG.boards, (b) => (b.ride === 'hover' ? b.glow : b.deck),
-  () => game.boardIndex,
-  (i) => {
-    game.selectBoard(i);
-    game.hud.showBoardInfo(boardInfoFor(CONFIG.boards[i]));
-  },
-  (b) => !game.ledger.owns('deck', b.id));
+// All character/gear selection now lives in the Skate Lab (staged + checkout);
+// the old two-step select screens are gone.
 
 // Keep taps on UI controls from also reaching the window touch handler (which
 // would queue a spurious "start"/jump).
@@ -82,30 +28,6 @@ function stopTouch(el) {
     el.addEventListener(type, (e) => e.stopPropagation());
   }
 }
-
-// Screen navigation: menu → char select → board select → back to menu.
-const menuChange = document.getElementById('menu-change');
-menuChange.addEventListener('click', () => game.goToSelectChar());
-stopTouch(menuChange);
-
-const charNext = document.getElementById('char-next');
-charNext.addEventListener('click', () => {
-  game.hud.showBoardInfo(boardInfoFor(CONFIG.boards[game.boardIndex]));
-  game.goToSelectBoard();
-});
-stopTouch(charNext);
-
-const boardBack = document.getElementById('board-back');
-boardBack.addEventListener('click', () => game.goToSelectChar());
-stopTouch(boardBack);
-
-const boardDone = document.getElementById('board-done');
-boardDone.addEventListener('click', () => game.goToMenu());
-stopTouch(boardDone);
-
-const boardStore = document.getElementById('board-store');
-boardStore.addEventListener('click', () => game.goToStore());
-stopTouch(boardStore);
 
 // Continue the ended run by spending banked coins.
 const continueBtn = document.getElementById('continue-btn');
@@ -130,6 +52,13 @@ const storeBack = document.getElementById('store-back');
 storeBack.addEventListener('click', () => game.goToMenu());
 stopTouch(storeBack);
 
+// Commit the staged Lab configuration (buys anything unowned).
+const storeCheckout = document.getElementById('store-checkout');
+storeCheckout.addEventListener('click', async () => {
+  game.hud.renderStore(await game.checkout());
+});
+stopTouch(storeCheckout);
+
 const menuRanked = document.getElementById('menu-ranked');
 menuRanked.addEventListener('click', () => game.startRun('ranked'));
 stopTouch(menuRanked);
@@ -141,6 +70,15 @@ stopTouch(menuFree);
 const menuHowto = document.getElementById('menu-howto');
 menuHowto.addEventListener('click', () => game.goToHowto());
 stopTouch(menuHowto);
+
+// Mute toggle (persists; icon reflects state). Also unlocks audio on first tap.
+const muteBtn = document.getElementById('mute-btn');
+muteBtn.textContent = game.audio.muted ? '🔇' : '🔊';
+muteBtn.addEventListener('click', () => {
+  game.audio.resume();
+  muteBtn.textContent = game.audio.toggleMute() ? '🔇' : '🔊';
+});
+stopTouch(muteBtn);
 
 const howtoBack = document.getElementById('howto-back');
 howtoBack.addEventListener('click', () => game.goToMenu());

@@ -49,6 +49,11 @@ export class Input {
         case 'KeyL':
           this.queue.push('shuvit');
           break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+        case 'KeyB':
+          this.queue.push('boost');
+          break;
         default:
           return;
       }
@@ -59,6 +64,12 @@ export class Input {
       'touchstart',
       (e) => {
         if (e.target.closest('#install-btn')) return; // button taps aren't game input
+        // Two-finger tap = boost (skate nitro).
+        if (e.touches.length >= 2) {
+          this.queue.push('boost');
+          this.touchStart = null;
+          return;
+        }
         const t = e.changedTouches[0];
         this.touchStart = { x: t.clientX, y: t.clientY };
         this.touchHeld = true; // finger down = glide on a hoverboard

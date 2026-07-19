@@ -10,12 +10,20 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <button id="mute-btn" title="Mute / unmute">🔊</button>
 
     <div id="hud">
       <div id="score-panel">
         <div id="score">0</div>
-        <div id="level">LVL 1</div>
+        <div id="center-hud">
+          <div id="level">LVL 1</div>
+          <div id="speed">0 <span class="unit">MPH</span></div>
+        </div>
         <div id="coins">⚙️ 0</div>
+      </div>
+      <div id="boost-row">
+        <span id="boost-count">⚡×0</span>
+        <div id="boost-track"><div id="boost-fill"></div></div>
       </div>
       <div id="effects"></div>
       <div id="grind-ticker" class="hidden">GRIND!</div>
@@ -33,37 +41,24 @@
       <div id="loading-track"><div id="loading-bar"></div></div>
     </div>
 
-    <!-- Selection step 1: character (live turntable preview behind) -->
-    <div id="select-char" class="overlay screen-split hidden">
-      <h2 class="screen-title">CHOOSE YOUR SKATER</h2>
-      <div class="select-bottom">
-        <div class="sel-row"><span class="sel-label">SKATER</span><div id="char-options" class="swatches"></div></div>
-        <button id="char-next" class="btn-primary">NEXT: BOARD →</button>
-      </div>
-    </div>
-
-    <!-- Selection step 2: board (camera drops to frame the deck) -->
-    <div id="select-board" class="overlay screen-split hidden">
-      <h2 class="screen-title">CHOOSE YOUR BOARD</h2>
-      <div class="select-bottom">
-        <div class="sel-row"><span class="sel-label">BOARD</span><div id="board-options" class="swatches"></div></div>
-        <p id="board-info" class="controls"></p>
-        <div class="menu-buttons">
-          <button id="board-back" class="btn-secondary">◂ SKATER</button>
-          <button id="board-store" class="btn-secondary">🛒 GET MORE IN THE STORE</button>
-          <button id="board-done" class="btn-primary">DONE ✓</button>
+    <!-- Skate Lab: pro-style customization — live 3D on the left, config panel right -->
+    <div id="store" class="overlay hidden">
+      <div class="store-layout">
+        <div class="store-preview"><!-- transparent: the turntable skater shows through --></div>
+        <div class="store-panel">
+          <div class="store-header">
+            <h2 class="screen-title">SKATE LAB</h2>
+            <div class="store-actions">
+              <button id="store-checkout" class="btn-primary">APPLY ✓</button>
+              <button id="store-back" class="btn-secondary">◂ BACK</button>
+            </div>
+          </div>
+          <p class="wallet">BANK: ⚙️ <span id="store-balance">0</span> &nbsp;·&nbsp; POT: ⚙️ <span id="store-pot">0</span> <span class="preview-tag">PREVIEW</span>
+            <span id="store-free" class="free-tag hidden">FREE TEST — ALL PARTS UNLOCKED</span></p>
+          <div id="store-dash"></div>
+          <div id="store-slots"></div>
         </div>
       </div>
-    </div>
-
-    <!-- Store: buy + equip parts across four slots -->
-    <div id="store" class="overlay hidden">
-      <h2 class="screen-title">SKATE SHOP</h2>
-      <div class="store-header">
-        <p class="wallet">BANK: ⚙️ <span id="store-balance">0</span> &nbsp;·&nbsp; POT: ⚙️ <span id="store-pot">0</span> <span class="preview-tag">PREVIEW</span></p>
-        <button id="store-back" class="btn-secondary">◂ BACK</button>
-      </div>
-      <div id="store-slots"></div>
     </div>
 
     <!-- 3. Start screen: clean title over the scrolling city -->
@@ -71,13 +66,21 @@
       <h1>SKATEHIVE<br />GRIND RUSH</h1>
       <p class="hiscore">HIGH SCORE: <span id="menu-hiscore">0</span></p>
       <p id="menu-wallet" class="wallet">BANK: ⚙️ 0</p>
-      <div class="menu-buttons">
-        <button id="menu-free" class="btn-primary">🛹 FREE SKATE</button>
-        <button id="menu-ranked" class="btn-primary btn-ranked">🏆 RANKED RUN</button>
+      <div class="menu-cards">
+        <button id="menu-store" class="menu-card card-lab">
+          <span class="card-icon">🛠</span><span class="card-label">SKATE LAB</span>
+          <span class="card-sub">gear up</span>
+        </button>
+        <button id="menu-free" class="menu-card card-free">
+          <span class="card-icon">🛹</span><span class="card-label">FREE SKATE</span>
+          <span class="card-sub">your gear, your rules</span>
+        </button>
+        <button id="menu-ranked" class="menu-card card-ranked">
+          <span class="card-icon">🏆</span><span class="card-label">RANKED</span>
+          <span class="card-sub">weekly pot · pure skill</span>
+        </button>
       </div>
       <div class="menu-buttons">
-        <button id="menu-store" class="btn-secondary">🛒 STORE</button>
-        <button id="menu-change" class="btn-secondary">◂ CHANGE SKATER</button>
         <button id="menu-howto" class="btn-secondary">❓ HOW TO PLAY</button>
       </div>
       <p class="prompt">or press <b>SPACE</b> / tap to skate</p>
@@ -94,6 +97,8 @@
       <p class="controls">hoverboards: futuristic tricks, magnet grinds, and hold ↑ (or touch) to glide</p>
       <p class="controls">on a rail: ← → to keep your balance — the longer the grind, the bigger the points</p>
       <p class="controls">grinding builds speed &nbsp;·&nbsp; powersliding scrubs it &nbsp;·&nbsp; grab ⚙️ bearings and powerups — dodge the red 🛢 can</p>
+      <p class="controls">tricks + grinds charge the 🔥 boost meter — burn it with SHIFT / B / two-finger tap</p>
+      <p class="controls">at a fork gantry, keep LEFT to take the rooftop route: mega-ramp up, jump the gaps, don't look down</p>
       <p class="controls">🏆 ranked runs compete for the weekly pot with normalized gear — pure skill</p>
       <button id="howto-back" class="btn-secondary">◂ BACK</button>
     </div>

@@ -246,37 +246,58 @@ function memStorage() {
 }
 {
   const store = memStorage();
-  const led = new LocalLedger(store);
+  const led = new LocalLedger(store, { unlockAll: false });
   if (led.getBalance() !== 0) throw new Error('fresh wallet not 0');
-  if (!led.owns('deck', 'deck-wood')) throw new Error('starter deck not owned');
-  if (led.owns('deck', 'deck-fire')) throw new Error('premium deck owned for free');
+  if (!led.owns('skate', 'deck', 'deck-wood')) throw new Error('starter deck not owned');
+  if (led.owns('skate', 'deck', 'deck-fire')) throw new Error('premium deck owned for free');
+  if (!led.owns('hover', 'thrusters', 'thr-ion')) throw new Error('starter hover thruster not owned');
 
   await led.earn(100);
-  let r = await led.buy('deck', 'deck-fire'); // costs 120
+  let r = await led.buy('skate', 'deck', 'deck-fire'); // costs 120
   if (r.ok || r.reason !== 'poor') throw new Error('bought deck-fire while too poor');
   await led.earn(50); // now 150
-  r = await led.buy('deck', 'deck-fire');
+  r = await led.buy('skate', 'deck', 'deck-fire');
   if (!r.ok || led.getBalance() !== 30) throw new Error(`buy math wrong: ${JSON.stringify(r)} bal ${led.getBalance()}`);
   if (Math.round(led.getPot()) !== Math.round(120 * CONFIG.potCutPct))
     throw new Error(`pot cut wrong: ${led.getPot()}`);
-  if (!led.owns('deck', 'deck-fire')) throw new Error('bought deck not owned');
-  if ((await led.buy('deck', 'deck-fire')).reason !== 'owned') throw new Error('re-bought owned deck');
-  await led.equip('deck', 'deck-fire');
-  if (led.getEquipped('deck') !== 'deck-fire') throw new Error('equip did not stick');
-  if ((await led.equip('wheels', 'wheels-turbo')).ok) throw new Error('equipped an unowned part');
+  if (!led.owns('skate', 'deck', 'deck-fire')) throw new Error('bought deck not owned');
+  if ((await led.buy('skate', 'deck', 'deck-fire')).reason !== 'owned') throw new Error('re-bought owned deck');
+  await led.equip('skate', 'deck', 'deck-fire');
+  if (led.getEquipped('skate', 'deck') !== 'deck-fire') throw new Error('equip did not stick');
+  if ((await led.equip('skate', 'wheels', 'wheels-turbo')).ok) throw new Error('equipped an unowned part');
+  await led.setRide('hover');
+  if (led.getRide() !== 'hover') throw new Error('setRide did not stick');
+  await led.setRide('skate');
 
   // Persistence: a fresh ledger over the same storage restores state.
-  const led2 = new LocalLedger(store);
-  if (led2.getBalance() !== 30 || !led2.owns('deck', 'deck-fire') || led2.getEquipped('deck') !== 'deck-fire')
+  const led2 = new LocalLedger(store, { unlockAll: false });
+  if (led2.getBalance() !== 30 || !led2.owns('skate', 'deck', 'deck-fire') || led2.getEquipped('skate', 'deck') !== 'deck-fire')
     throw new Error('ledger did not persist');
   console.log('ledger persistence OK');
 
-  // computeStats: ranked normalizes to 1; casual reflects equipped parts.
-  const ranked = computeStats({ ...DEFAULT_LOADOUT, deck: 'deck-fire' }, 'ranked');
+  // computeStats: ranked normalizes to 1; casual reflects the ACTIVE ride's
+  // equipped parts (including the new powerslide stats).
+  const loadout = {
+    ride: 'skate',
+    skate: { ...DEFAULT_LOADOUT.skate, deck: 'deck-fire', wheels: 'wheels-turbo' },
+    hover: { ...DEFAULT_LOADOUT.hover },
+  };
+  const ranked = computeStats(loadout, 'ranked');
   if (Object.values(ranked).some((v) => v !== 1)) throw new Error('ranked stats not normalized');
-  const casual = computeStats({ ...DEFAULT_LOADOUT, deck: 'deck-fire', wheels: 'wheels-turbo' }, 'casual');
+  const casual = computeStats(loadout, 'casual');
   if (casual.scoreMul !== 1.1 || casual.speedMul !== 1.25)
     throw new Error(`casual stats wrong: ${JSON.stringify(casual)}`);
+  const slidey = computeStats(
+    { ...loadout, skate: { ...loadout.skate, wheels: 'wheels-longhaul' } }, 'casual');
+  if (slidey.slideLenMul !== 1.5 || slidey.slideBrakeMul !== 0.85)
+    throw new Error(`powerslide stats wrong: ${JSON.stringify(slidey)}`);
+  // Hover ride reads hover slots (thrusters drive speed).
+  const hovers = computeStats(
+    { ...loadout, ride: 'hover', hover: { ...loadout.hover, thrusters: 'thr-plasma' } }, 'casual');
+  if (hovers.speedMul !== 1.25) throw new Error(`hover thruster stats wrong: ${JSON.stringify(hovers)}`);
+  // Free-test mode: everything owned without buying.
+  const ledFree = new LocalLedger(memStorage(), { unlockAll: true });
+  if (!ledFree.owns('hover', 'deck', 'deck-volt')) throw new Error('unlockAll did not unlock');
 
   // Leaderboard: ranked runs recorded (top-first), casual ignored.
   const NOW = 1_700_000_000_000;
@@ -321,5 +342,87 @@ function memStorage() {
   if (!picked) throw new Error('magnet did not vacuum the off-lane can');
   console.log('powerups + magnet OK');
 }
+
+// 12. Underground: elevated slabs, roof-edge ramps, fork triggers, routes.
+{
+  const slab = {
+    position: { x: 0, y: 0, z: 0 },
+    userData: { collider: { type: 'roof', band: 'platform', lane: 1, x: 0, top: CONFIG.roofTop, bottom: CONFIG.roofSlabBottom, halfDepth: 12, wide: true, baseY: 0 } },
+  };
+  // Street player passes under the slab: no hit, no support.
+  p.reset();
+  if (checkCollisions(p, [slab])) throw new Error('street player hit the slab underside');
+  if (queryFloor(p, [slab]) !== 0) throw new Error('street player supported by slab from below');
+  // Rooftop player is supported on top.
+  p.y = CONFIG.roofTop; p.vy = 0; p.airborne = false;
+  if (queryFloor(p, [slab]) !== CONFIG.roofTop) throw new Error('rooftop player not supported');
+  // Falling short into the slab face (at face height) is a hit.
+  p.y = CONFIG.roofTop - 1; p.vy = -2; p.airborne = true;
+  if (checkCollisions(p, [slab])?.kind !== 'hit') throw new Error('slab face did not hit');
+  // Wide tolerance: works from the outer lane too.
+  p.reset(); p.x = CONFIG.lanes[0]; p.y = CONFIG.roofTop; p.airborne = false;
+  if (queryFloor(p, [slab]) !== CONFIG.roofTop) throw new Error('wide slab not supporting outer lane');
+
+  // Roof-edge ramp only fires at roof height (baseY gating).
+  const rooframp = {
+    position: { x: 0, y: 0, z: 0 },
+    userData: { collider: { type: 'rooframp', band: 'kicker', lane: 1, x: 0, top: 7, halfDepth: 1.25, wide: true, baseY: CONFIG.roofTop, launch: CONFIG.roofRampLaunch } },
+  };
+  p.reset(); // street level
+  if (checkCollisions(p, [rooframp])) throw new Error('roof ramp fired at street level');
+  p.y = CONFIG.roofTop; p.airborne = false;
+  const launch = checkCollisions(p, [rooframp]);
+  if (launch?.kind !== 'launch' || launch.power !== CONFIG.roofRampLaunch)
+    throw new Error('roof ramp did not fire at roof height');
+
+  // Fork trigger reports a fork.
+  const fork = {
+    position: { x: 0, y: 0, z: 0 },
+    userData: { collider: { type: 'fork', band: 'fork', lane: 1, x: 0, top: 0, halfDepth: 0.5, wide: true, baseY: 0 } },
+  };
+  p.reset();
+  if (checkCollisions(p, [fork])?.kind !== 'fork') throw new Error('fork trigger silent');
+
+  // Route system: forks appear on the street; chooseRoute('roof') spawns the
+  // mega-ramp entry followed by slabs, then reverts to street.
+  const cm = new ChunkManager(scene, new CoinManager(scene));
+  const seen = () => new Set(cm.active.map((m) => m.userData.collider.type));
+  for (let i = 0; i < 4000 && !seen().has('fork'); i++) cm.update(1 / 60, 30, 100);
+  if (!seen().has('fork')) throw new Error('no fork ever spawned on the street');
+  cm.chooseRoute('roof');
+  for (let i = 0; i < 4000 && !(seen().has('megaramp') && seen().has('roof')); i++) {
+    cm.update(1 / 60, 30, 100);
+  }
+  if (!seen().has('megaramp') || !seen().has('roof'))
+    throw new Error('roof route did not spawn entry ramp + slabs');
+  for (let i = 0; i < 6000 && cm.route !== 'street'; i++) cm.update(1 / 60, 30, 100);
+  if (cm.route !== 'street') throw new Error('route did not revert to street after the roof run');
+  console.log('underground route pieces OK');
+}
+
+// 13. High jumps: grind-jump and elevated ("second level") ollies pop with
+// highJumpVelocity; a flat-ground ollie stays standard.
+{
+  p.reset();
+  p.jump();
+  if (p.vy !== CONFIG.jumpVelocity) throw new Error('flat ollie velocity wrong');
+  p.reset();
+  p.y = CONFIG.containerTop; p.airborne = false; // standing on a container
+  p.jump();
+  if (p.vy !== CONFIG.highJumpVelocity) throw new Error('elevated ollie not high');
+  p.reset();
+  p.enterGrind(fakeRail);
+  p.jump(); // pop off the rail
+  if (p.vy !== CONFIG.highJumpVelocity) throw new Error('grind jump not high');
+  if (p.grinding) throw new Error('still grinding after rail pop');
+  console.log('high jumps OK');
+}
+
+// 14. Stance mirror: goofy flips the model on x, regular restores it.
+p.setStance('goofy');
+if (p.model.scale.x >= 0) throw new Error('goofy stance did not mirror the model');
+p.setStance('regular');
+if (p.model.scale.x <= 0) throw new Error('regular stance did not restore the model');
+console.log('stance mirror OK');
 
 console.log('ALL SMOKE TESTS PASSED');

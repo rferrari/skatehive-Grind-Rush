@@ -5,9 +5,39 @@
 //
 // Gameplay events (trick landed, balance bail, ...) are queued on
 // this.events and drained by game.js via popEvents().
-import { Group, Mesh, CircleGeometry, MeshBasicMaterial } from 'three';
+import { Group, Mesh, CircleGeometry, ConeGeometry, MeshBasicMaterial, CanvasTexture } from 'three';
 import { CONFIG } from './config.js';
 import { buildSkater, DEFAULT_SKATER_PALETTE } from './meshes.js';
+
+// Chest-logo textures, drawn once per brand on an offscreen canvas (emoji or
+// the SKATEHIVE wordmark) — no image assets, works offline. Browser-only.
+const brandTextures = new Map();
+function brandTexture(brand) {
+  if (brandTextures.has(brand.id)) return brandTextures.get(brand.id);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  if (brand.logo.length > 3) {
+    // Wordmark: stacked bold text with an outline so it reads on any shirt.
+    g.font = 'bold 64px "Courier New", monospace';
+    g.lineWidth = 10;
+    g.strokeStyle = '#111';
+    g.fillStyle = '#fff';
+    g.strokeText('SKATE', 128, 96);
+    g.fillText('SKATE', 128, 96);
+    g.strokeText('HIVE', 128, 164);
+    g.fillText('HIVE', 128, 164);
+  } else {
+    g.font = '170px serif'; // emoji glyph
+    g.fillText(brand.logo, 128, 140);
+  }
+  const tex = new CanvasTexture(c);
+  brandTextures.set(brand.id, tex);
+  return tex;
+}
 
 const lerp = (a, b, t) => a + (b - a) * t;
 // Frame-rate independent exponential approach.
@@ -32,7 +62,10 @@ export class Player {
     this.ride = 'skate'; // 'skate' | 'hover' — survives reset()
     // Loadout stat multipliers (game.js sets these per run from computeStats);
     // neutral by default so headless/test callers behave like base tuning.
-    this.stats = { speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1, trickSpeedMul: 1, trickScoreMul: 1 };
+    this.stats = {
+      speedMul: 1, handlingMul: 1, balanceMul: 1, scoreMul: 1,
+      trickSpeedMul: 1, trickScoreMul: 1, slideBrakeMul: 1, slideLenMul: 1,
+    };
     // Soft blob shadow that grounds the skater; shrinks/fades with air height.
     this.shadowMat = new MeshBasicMaterial({
       color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false,
@@ -41,19 +74,57 @@ export class Player {
     this.shadow.rotation.x = -Math.PI / 2;
     scene.add(this.shadow);
     this.floorY = 0; // support height under the player (set each update)
+
+    // Flame trails off the rear wheels — ignite at high speed / while boosting.
+    this.fireIntensity = 0;
+    this.flames = [];
+    const flameGeo = new ConeGeometry(0.16, 0.9, 7);
+    for (const x of [-0.15, 0.15]) {
+      const mat = new MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.9, depthWrite: false });
+      const flame = new Mesh(flameGeo, mat);
+      flame.rotation.x = Math.PI / 2; // apex trails backward (+z, toward camera)
+      flame.position.set(x, 0.12, 0.5);
+      flame.visible = false;
+      this.parts.board.add(flame);
+      this.flames.push(flame);
+    }
+
     scene.add(this.group);
     this.reset();
   }
 
-  // Apply the cosmetic side of an equipped loadout: wheel color/size and truck
-  // color. (Deck color/glow + ride go through applyPalette/setRide.)
-  applyLoadoutCosmetics(wheelsPart, trucksPart) {
-    if (wheelsPart?.cosmetic) {
-      this.mats.wheel.color.setHex(wheelsPart.cosmetic.color);
-      const r = wheelsPart.cosmetic.radius ?? 0.09;
-      for (const w of this.parts.wheels) w.scale.setScalar(r / 0.09);
+  // Fire VFX intensity 0..1 (game drives this from speed + boost).
+  setFire(intensity) {
+    this.fireIntensity = intensity;
+    const on = intensity > 0.01;
+    for (const f of this.flames) f.visible = on;
+  }
+
+  // Apply the cosmetic side of the equipped loadout for the active ride.
+  // Skate: wheel color/size + truck color. Hover: thruster jet color/size +
+  // mag-lock pod color. (Deck color/glow + ride go via applyPalette/setRide.)
+  applyLoadoutCosmetics(ride, partA, partB) {
+    if (ride === 'skate') {
+      if (partA?.cosmetic) {
+        this.mats.wheel.color.setHex(partA.cosmetic.color);
+        const r = partA.cosmetic.radius ?? 0.09;
+        for (const w of this.parts.wheels) w.scale.setScalar(r / 0.09);
+      }
+      if (partB?.cosmetic) this.mats.truck.color.setHex(partB.cosmetic.color);
+    } else {
+      if (partA?.cosmetic) {
+        this.mats.thruster.color.setHex(partA.cosmetic.color);
+        this.mats.thruster.emissive.setHex(partA.cosmetic.color);
+        // Jets are unit boxes whose DIMENSIONS live in scale — multiply the
+        // remembered base, never overwrite it (that made a giant neon cube).
+        const s = partA.cosmetic.size ?? 1;
+        for (const jet of this.parts.thrusterJets) {
+          jet.userData.baseScale ??= jet.scale.clone();
+          jet.scale.copy(jet.userData.baseScale).multiplyScalar(s);
+        }
+      }
+      if (partB?.cosmetic) this.mats.pod.color.setHex(partB.cosmetic.color);
     }
-    if (trucksPart?.cosmetic) this.mats.truck.color.setHex(trucksPart.cosmetic.color);
   }
 
   // Recolor the skater/board live from a selected character + board palette.
@@ -64,6 +135,24 @@ export class Player {
       this.mats[key].color.setHex(p[key]);
       if (key === 'glow') this.mats.glow.emissive.setHex(p[key]);
     }
+  }
+
+  // Stance: goofy mirrors the whole model (lead foot flips).
+  setStance(stance) {
+    const s = CONFIG.playerVisualScale;
+    this.model.scale.set(stance === 'goofy' ? -s : s, s, s);
+  }
+
+  // Chest brand print (null/NONE hides it). No-op headless (no canvas).
+  applyBrand(brand) {
+    const logo = this.parts.logo;
+    if (!brand?.logo || typeof document === 'undefined') {
+      logo.visible = false;
+      return;
+    }
+    this.mats.logo.map = brandTexture(brand);
+    this.mats.logo.needsUpdate = true;
+    logo.visible = true;
   }
 
   // Hide/show the whole skater (menu screens run the world without them).
@@ -128,6 +217,7 @@ export class Player {
     arms.rotation.set(0, 0, 0);
     arms.children[0].rotation.set(0, 0, 0);
     arms.children[1].rotation.set(0, 0, 0);
+    if (this.flames) this.setFire(0);
   }
 
   get topY() {
@@ -157,9 +247,13 @@ export class Player {
   jump() {
     if (this.bailing) return;
     if (this.grinding) {
-      this.exitGrind(CONFIG.jumpVelocity); // full jump off the rail
+      // Popping off a rail carries the grind's energy — extra height, enough
+      // to reach a container top or chain onto something big.
+      this.exitGrind(CONFIG.highJumpVelocity);
     } else if (!this.airborne) {
-      this.vy = CONFIG.jumpVelocity;
+      // "Second-level" ollie: jumping from an elevated surface (container,
+      // rooftop) also pops higher than a flat-ground ollie.
+      this.vy = this.y > 0.5 ? CONFIG.highJumpVelocity : CONFIG.jumpVelocity;
       this.airborne = true;
       this.sliding = false;
     }
@@ -323,7 +417,8 @@ export class Player {
       }
       if (this.sliding) {
         this.slideTime += dt;
-        if (this.slideTime > CONFIG.slideDuration) this.sliding = false;
+        // Wheel choice stretches or shortens how long a powerslide holds.
+        if (this.slideTime > CONFIG.slideDuration * this.stats.slideLenMul) this.sliding = false;
       }
     }
 
@@ -437,6 +532,18 @@ export class Player {
     const grounded = !this.airborne && !this.grinding;
     body.position.y = 0.29 + (grounded ? Math.sin(this.time * 9) * 0.02 : 0);
     legs.scale.y = 1; // legs length lives in body.scale.y
+
+    // Flame flicker: length rides intensity, color shifts orange→yellow hot.
+    if (this.fireIntensity > 0.01) {
+      for (let i = 0; i < this.flames.length; i++) {
+        const f = this.flames[i];
+        const flick = 0.75 + Math.sin(this.time * 40 + i * 2.1) * 0.25;
+        f.scale.set(0.7 + this.fireIntensity * 0.5, 1, 0.7 + this.fireIntensity * 0.5);
+        f.scale.y = (0.8 + this.fireIntensity * 2.2) * flick; // length back
+        f.material.color.setHex(this.fireIntensity > 0.75 ? 0xffd23d : 0xff7a1a);
+        f.material.opacity = 0.55 + this.fireIntensity * 0.4;
+      }
+    }
   }
 
   applyBailPose() {
