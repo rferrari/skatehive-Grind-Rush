@@ -666,10 +666,18 @@ export class Game {
   updateCamera(dt) {
     const cam = this.camera;
 
-    // Skate Lab frames the skater on the LEFT (config panel fills the right).
+    // Skate Lab framing depends on where the config panel sits (same 700px
+    // breakpoint as the CSS): desktop puts the panel on the right → skater on
+    // the LEFT; phones stack the panel below → aim down so the skater rises
+    // into the top preview strip.
     if (this.state === 'store') {
-      cam.position.set(1.7, 1.25, 4.1);
-      cam.lookAt(0.35, 0.8, 0);
+      if (innerWidth <= 700) {
+        cam.position.set(0, 1.05, 4.1);
+        cam.lookAt(0, -1.05, 0);
+      } else {
+        cam.position.set(1.7, 1.25, 4.1);
+        cam.lookAt(0.35, 0.8, 0);
+      }
       if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
         cam.fov = CONFIG.fovBase;
         cam.updateProjectionMatrix();

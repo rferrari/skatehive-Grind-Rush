@@ -747,7 +747,7 @@ body {
     flex-direction: column;
   }
   .store-preview {
-    flex: 0 0 26vh;
+    flex: 0 0 30vh;
   }
   .store-panel {
     max-width: none;
