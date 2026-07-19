@@ -61,14 +61,21 @@
       </div>
     </div>
 
-    <!-- Store: buy + equip parts across four slots -->
+    <!-- Skate Lab: pro-style customization — live 3D on the left, config panel right -->
     <div id="store" class="overlay hidden">
-      <h2 class="screen-title">SKATE SHOP</h2>
-      <div class="store-header">
-        <p class="wallet">BANK: ⚙️ <span id="store-balance">0</span> &nbsp;·&nbsp; POT: ⚙️ <span id="store-pot">0</span> <span class="preview-tag">PREVIEW</span></p>
-        <button id="store-back" class="btn-secondary">◂ BACK</button>
+      <div class="store-layout">
+        <div class="store-preview"><!-- transparent: the turntable skater shows through --></div>
+        <div class="store-panel">
+          <div class="store-header">
+            <h2 class="screen-title">SKATE LAB</h2>
+            <button id="store-back" class="btn-secondary">◂ BACK</button>
+          </div>
+          <p class="wallet">BANK: ⚙️ <span id="store-balance">0</span> &nbsp;·&nbsp; POT: ⚙️ <span id="store-pot">0</span> <span class="preview-tag">PREVIEW</span>
+            <span id="store-free" class="free-tag hidden">FREE TEST — ALL PARTS UNLOCKED</span></p>
+          <div id="store-dash"></div>
+          <div id="store-slots"></div>
+        </div>
       </div>
-      <div id="store-slots"></div>
     </div>
 
     <!-- 3. Start screen: clean title over the scrolling city -->

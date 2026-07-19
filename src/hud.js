@@ -14,6 +14,18 @@ const SLOT_STAT = {
   spinners: (s) => `trick ×${s.trickScoreMul ?? 1}`,
 };
 
+// Skate Lab dashboard bars: how each loadout stat maps to a 0–100% fill.
+// min = stock value, max = best part in the catalog (trickSpeed inverts:
+// lower multiplier = faster spins = fuller bar).
+const STAT_BARS = [
+  { key: 'speedMul', label: 'MAX SPEED', min: 1, max: 1.25 },
+  { key: 'handlingMul', label: 'HANDLING', min: 1, max: 1.3 },
+  { key: 'balanceMul', label: 'GRIND GRIP', min: 1, max: 1.25 },
+  { key: 'scoreMul', label: 'SCORE BONUS', min: 1, max: 1.25 },
+  { key: 'trickSpeedMul', label: 'SPIN SPEED', min: 1, max: 0.7 },
+  { key: 'trickScoreMul', label: 'TRICK PAYOUT', min: 1, max: 1.35 },
+];
+
 export class Hud {
   constructor() {
     this.el = {
@@ -50,6 +62,8 @@ export class Hud {
       storeSlots: document.getElementById('store-slots'),
       storeBalance: document.getElementById('store-balance'),
       storePot: document.getElementById('store-pot'),
+      storeDash: document.getElementById('store-dash'),
+      storeFree: document.getElementById('store-free'),
     };
     this.lastScore = -1;
     this.lastCoins = -1;
@@ -199,12 +213,62 @@ export class Hud {
     this.showScreen('gameover');
   }
 
-  // ----------------------------------------------------------------- store ---
-  // Build tiles once; onSelect(slot, id) is called on tap (game decides buy
-  // vs equip). Tiles are re-styled by renderStore().
+  // ------------------------------------------------------------ skate lab ---
+  // Build once: stat-bar dashboard + character row + part slots. onSelect
+  // (slot, id) fires on tap; renderStore() re-styles tiles and animates bars.
   buildStore(onSelect) {
+    // Dashboard bars.
+    this.dashBars = {};
+    this.el.storeDash.innerHTML = '';
+    for (const spec of STAT_BARS) {
+      const row = document.createElement('div');
+      row.className = 'dash-row';
+      row.innerHTML =
+        `<span class="dash-label">${spec.label}</span>` +
+        `<span class="dash-track"><span class="dash-fill"></span></span>` +
+        `<span class="dash-delta"></span>`;
+      this.el.storeDash.appendChild(row);
+      this.dashBars[spec.key] = {
+        fill: row.querySelector('.dash-fill'),
+        delta: row.querySelector('.dash-delta'),
+        spec,
+      };
+    }
+
+    const stopTouch = (el) => {
+      for (const type of ['touchstart', 'touchend']) el.addEventListener(type, (e) => e.stopPropagation());
+    };
+    const makeTile = (chipColor, name, statText, onTap) => {
+      const t = document.createElement('button');
+      t.className = 'store-tile';
+      t.innerHTML =
+        `<span class="tile-chip" style="background:${chipColor}"></span>` +
+        `<span class="tile-name">${name}</span>` +
+        (statText ? `<span class="tile-stat">${statText}</span>` : '') +
+        `<span class="tile-cost"></span>`;
+      t.addEventListener('click', onTap);
+      stopTouch(t);
+      return t;
+    };
+
     this.storeTiles = {};
     this.el.storeSlots.innerHTML = '';
+
+    // Character row (free cosmetics, Session-style preset picker).
+    const charRow = document.createElement('div');
+    charRow.className = 'store-row';
+    charRow.innerHTML = `<span class="sel-label">SKATER</span>`;
+    const charTiles = document.createElement('div');
+    charTiles.className = 'store-tiles';
+    this.storeTiles.character = CONFIG.characters.map((c, i) => {
+      const t = makeTile(hex(c.colors.shirt), c.name, '', () => onSelect('character', i));
+      charTiles.appendChild(t);
+      return t;
+    });
+    charRow.appendChild(charTiles);
+    this.el.storeSlots.appendChild(charRow);
+
+    // Part slots.
     for (const slot of PART_SLOTS) {
       const row = document.createElement('div');
       row.className = 'store-row';
@@ -212,16 +276,9 @@ export class Hud {
       const tiles = document.createElement('div');
       tiles.className = 'store-tiles';
       this.storeTiles[slot] = CONFIG.parts[slot].map((part) => {
-        const t = document.createElement('button');
-        t.className = 'store-tile';
         const swatch = slot === 'deck' ? (part.glow ?? part.deck) : part.cosmetic.color;
-        t.innerHTML =
-          `<span class="tile-chip" style="background:${hex(swatch)}"></span>` +
-          `<span class="tile-name">${part.name}</span>` +
-          `<span class="tile-stat">${SLOT_STAT[slot](part.stats)}</span>` +
-          `<span class="tile-cost"></span>`;
-        t.addEventListener('click', () => onSelect(slot, part.id));
-        for (const type of ['touchstart', 'touchend']) t.addEventListener(type, (e) => e.stopPropagation());
+        const t = makeTile(hex(swatch), part.name, SLOT_STAT[slot](part.stats), () =>
+          onSelect(slot, part.id));
         tiles.appendChild(t);
         return t;
       });
@@ -233,6 +290,26 @@ export class Hud {
   renderStore(state) {
     this.el.storeBalance.textContent = state.balance;
     this.el.storePot.textContent = state.pot;
+    this.el.storeFree.classList.toggle('hidden', !state.free);
+
+    // Animate the dashboard to the equipped loadout's stats.
+    for (const { fill, delta, spec } of Object.values(this.dashBars)) {
+      const v = state.stats[spec.key] ?? 1;
+      const t = Math.max(0, Math.min(1, (v - spec.min) / (spec.max - spec.min)));
+      fill.style.width = `${Math.round(12 + t * 88)}%`; // floor so stock is visible
+      const pct = spec.key === 'trickSpeedMul' ? Math.round((1 - v) * 100) : Math.round((v - 1) * 100);
+      delta.textContent = pct > 0 ? `+${pct}%` : 'STOCK';
+      delta.classList.toggle('boosted', pct > 0);
+    }
+
+    // Character tiles.
+    this.storeTiles.character.forEach((tile, i) => {
+      const equipped = i === state.charIndex;
+      tile.classList.toggle('equipped', equipped);
+      tile.querySelector('.tile-cost').textContent = equipped ? 'RIDING' : 'PICK';
+    });
+
+    // Part tiles (free-test mode: everything equips, no prices).
     for (const slot of PART_SLOTS) {
       CONFIG.parts[slot].forEach((part, i) => {
         const tile = this.storeTiles[slot][i];
@@ -241,7 +318,7 @@ export class Hud {
         tile.classList.toggle('owned', owned && !equipped);
         tile.classList.toggle('equipped', equipped);
         const affordable = owned || part.cost <= state.balance;
-        tile.classList.toggle('locked', !affordable);
+        tile.classList.toggle('locked', !state.free && !affordable);
         tile.querySelector('.tile-cost').textContent = equipped
           ? 'EQUIPPED'
           : owned

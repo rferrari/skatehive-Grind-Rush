@@ -132,14 +132,23 @@ export class Game {
     this.hud.showStore(this.storeState());
   }
 
-  // Snapshot the ledger for the store UI to render.
+  // Snapshot for the Skate Lab UI: ownership + equipped loadout + the live
+  // stat readout the dashboard bars render.
   storeState() {
     const owned = {};
     const equipped = this.ledger.getLoadout();
     for (const slot of Object.keys(CONFIG.parts)) {
       owned[slot] = CONFIG.parts[slot].map((p) => this.ledger.owns(slot, p.id));
     }
-    return { balance: this.ledger.getBalance(), pot: this.ledger.getPot(), equipped, owned };
+    return {
+      balance: this.ledger.getBalance(),
+      pot: this.ledger.getPot(),
+      equipped,
+      owned,
+      charIndex: this.charIndex,
+      stats: computeStats(equipped, 'casual'),
+      free: this.ledger.unlockAll,
+    };
   }
 
   // Repaint the skater from the character colors + equipped loadout: deck
@@ -187,10 +196,12 @@ export class Game {
     return true;
   }
 
-  // Store tap: equip if already owned, otherwise buy then equip on success.
-  // Returns a fresh storeState() snapshot for the UI to re-render.
+  // Store tap: equip if owned (always, in free-test mode), otherwise buy then
+  // equip. slot 'character' swaps the skater preset. Returns a fresh snapshot.
   async storeSelect(slot, id) {
-    if (this.ledger.owns(slot, id)) {
+    if (slot === 'character') {
+      this.selectCharacter(id);
+    } else if (this.ledger.owns(slot, id)) {
       await this.equipPart(slot, id);
     } else {
       const r = await this.ledger.buy(slot, id);
@@ -555,7 +566,17 @@ export class Game {
       }
       return;
     }
-    if (this.state === 'loading' || this.state === 'selectChar' || this.state === 'store') {
+    // Skate Lab frames the skater on the LEFT (config panel fills the right).
+    if (this.state === 'store') {
+      cam.position.set(1.7, 1.25, 4.1);
+      cam.lookAt(0.35, 0.8, 0);
+      if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {
+        cam.fov = CONFIG.fovBase;
+        cam.updateProjectionMatrix();
+      }
+      return;
+    }
+    if (this.state === 'loading' || this.state === 'selectChar') {
       cam.position.set(0, 1.35, 3.8);
       cam.lookAt(0, 0.82, 0);
       if (Math.abs(cam.fov - CONFIG.fovBase) > 0.01) {

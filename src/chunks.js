@@ -108,10 +108,10 @@ const PATTERNS = [
       { type: 'kicker', lane: 1, z: 8 },
       { type: 'container', lane: 1, z: 16 },
     ],
-    coins: [
-      { lane: 1, z: 9, count: 4, arc: true },
-      { lane: 1, z: 12, count: 7, y: 2.6 },
-    ],
+    // No arc row here: the kicker wedge is 2.2 deep and the container face
+    // starts right after it, so an arc would clip through both. The row along
+    // the container top is the launch reward.
+    coins: [{ lane: 1, z: 12, count: 7, y: 2.6 }],
   },
   {
     tier: 2,

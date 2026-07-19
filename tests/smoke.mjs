@@ -246,7 +246,7 @@ function memStorage() {
 }
 {
   const store = memStorage();
-  const led = new LocalLedger(store);
+  const led = new LocalLedger(store, { unlockAll: false });
   if (led.getBalance() !== 0) throw new Error('fresh wallet not 0');
   if (!led.owns('deck', 'deck-wood')) throw new Error('starter deck not owned');
   if (led.owns('deck', 'deck-fire')) throw new Error('premium deck owned for free');
@@ -266,7 +266,7 @@ function memStorage() {
   if ((await led.equip('wheels', 'wheels-turbo')).ok) throw new Error('equipped an unowned part');
 
   // Persistence: a fresh ledger over the same storage restores state.
-  const led2 = new LocalLedger(store);
+  const led2 = new LocalLedger(store, { unlockAll: false });
   if (led2.getBalance() !== 30 || !led2.owns('deck', 'deck-fire') || led2.getEquipped('deck') !== 'deck-fire')
     throw new Error('ledger did not persist');
   console.log('ledger persistence OK');
